@@ -38,7 +38,7 @@ Call snap.stop() passing a label for the test (like "Lookup" or "Insert") and al
 
 After all data collection is done, call snap.summary() passing one header string and a FILE pointer object (defaults to stdin). The best models will be computed and displayed.
 
-2. Build the test linking against the library
+- Build the test linking against the library
 
 When the test runs, the library will take care of starting/stopping performance counters and running some statistical model selection at the end.
 
@@ -48,12 +48,11 @@ When the test runs, the library will take care of starting/stopping performance 
 
 2) Could I have just generated a CSV with the performance counters and then used R or python to generate the results? Yes, but there is a convenience factor to have everything in a single binary - less moving parts for installation. This way we do not depend on any particular python version or library installed.
 
-============================================================================
+
 Vitorian LLC
 We are a C++/FinTech startup. Please support our work!
 web: www.vitorian.com/x1
 email: henry@vitorian.com
 linkedin: www.linkedin.com/in/hftrader
-============================================================================
 
 LICENSE: MIT
