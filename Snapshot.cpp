@@ -198,23 +198,28 @@ void Snapshot::summary( const std::string& header, FILE* f ) {
             }
         }
 
-        std::vector<std::string> colnames  = { "Constant",
-                                               "CacheMisses",
-                                               "BranchMisses",
-                                               "Log(N)", "N",
-                                               "N*Log(N)", "N^2" };
-        fprintf( f, "%s, Event:%s, Cyc/Ins:%3.2f Cyc/Bch:%3.2f Points:%d Rsq:%5.2f F:%f LL:%f aic:%f bic:%f \n",
-                 header.c_str(), evname.c_str(),
-                 cycinstr, cycbranch, numpoints,
-                 bestreg.rsq, bestreg.fpval,
-                 bestreg.loglik, bestreg.aic, bestreg.bic );
+        if ( not found ) {
+            fprintf( f, "    Model did not converge\n" );
+        }
+        else {
+            std::vector<std::string> colnames  = { "Constant",
+                                                   "CacheMisses",
+                                                   "BranchMisses",
+                                                   "Log(N)", "N",
+                                                   "N*Log(N)", "N^2" };
+            fprintf( f, "%s, Event:%s, Cyc/Ins:%3.2f Cyc/Bch:%3.2f Points:%d Rsq:%5.2f F:%f LL:%f aic:%f bic:%f \n",
+                     header.c_str(), evname.c_str(),
+                     cycinstr, cycbranch, numpoints,
+                     bestreg.rsq, bestreg.fpval,
+                     bestreg.loglik, bestreg.aic, bestreg.bic );
 
-        auto mask = calcMask( bestmodel );
-        for ( unsigned j=0; j<mask.size(); ++j ) {
-            fprintf( f, "   Term: %-12s  p:%7.5f coef:%g\n",
-                     colnames[mask[j]].c_str(),
-                     bestreg.pval(j),
-                     bestreg.sol(j) );
+            auto mask = calcMask( bestmodel );
+            for ( unsigned j=0; j<mask.size(); ++j ) {
+                fprintf( f, "   Term: %-12s  p:%7.5f coef:%g\n",
+                         colnames[mask[j]].c_str(),
+                         bestreg.pval(j),
+                         bestreg.sol(j) );
+            }
         }
     }
 }

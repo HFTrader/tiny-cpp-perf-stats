@@ -60,6 +60,7 @@ PriorityQueue, Event:Check, Cyc/Ins:0.88 Cyc/Bch:496.12 Points:6 Rsq: 1.00 F:0.0
    Term: CacheMisses   p:0.00000 coef:165.089
    Term: N*Log(N)      p:0.00000 coef:2.80993e-05
 PriorityQueue, Event:FillUp, Cyc/Ins:0.57 Cyc/Bch:613.50 Points:6 Rsq: 1.00 F:0.000000 LL:-23.438262 aic:8.812754 bic:8.708634
+(model did not converge)
 MultiMap, Event:ReCheck, Cyc/Ins:1.48 Cyc/Bch:561.91 Points:6 Rsq: 1.00 F:0.000000 LL:-19.854808 aic:7.618269 bic:7.514149
    Term: Constant      p:0.00000 coef:57.1476
    Term: CacheMisses   p:0.00000 coef:39.7849
@@ -83,9 +84,13 @@ MultiMap, Event:FillUp, Cyc/Ins:1.33 Cyc/Bch:271.45 Points:6 Rsq: 0.99 F:0.00001
 
 
 Vitorian LLC
+
 We are a C++/FinTech startup. Please support our work!
+
 web: www.vitorian.com/x1
+
 email: henry@vitorian.com
+
 linkedin: www.linkedin.com/in/hftrader
 
 LICENSE: MIT
