@@ -1,2 +1,59 @@
 # tiny-cpp-perf-stats
-Project intends to provide an easy framework for 
+
+## Description
+
+This project intends to provide an easy framework for modelling algorithm behavior. It grew organically from the necessity of tapping into the internal CPU performance counters and then generating some statistics on it.
+
+The project is composed of one very simple class/API for encapsulation of the stats collection and on simple OLS solver for model selection.
+
+Once data is collected, several statistical models are fitted. The best fit is then printed.
+
+The statistics model the number of cycles spent by the processor as dependent of:
+- one Big-O: constant, Log(N), N, N.Log(N) and N^2
+- several permutations of performance counters: cache misses and branch misses
+
+A total of 28 models is generated and fitted. The best model is calculated using the Akaike Information Criterion (AIC). Other metrics are also displayed (R^2, F-test, BIC).
+
+A test was created that uses the scheduler problem implemented in two naive ways:
+- std::multimap
+- std::priority_queue
+
+## Dependencies:
+
+- Boost math/statistics
+
+- Armadillo C++ Algebra
+
+## Instructions:
+
+- Build libtinyperfstats (see CMakeLists.txt)
+
+- Create a test binary
+
+Include _Snapshot.h_ and create one Snapshot object. Typically your problem will be dependent on some **N**, being the number of objects for example.
+
+Call snap.start() at the beginning of every section you want to measure.
+
+Call snap.stop() passing a label for the test (like "Lookup" or "Insert") and also pass your **N** and the number of times (loops) each operation has been performed.
+
+After all data collection is done, call snap.summary() passing one header string and a FILE pointer object (defaults to stdin). The best models will be computed and displayed.
+
+2. Build the test linking against the library
+
+When the test runs, the library will take care of starting/stopping performance counters and running some statistical model selection at the end.
+
+## Questions:
+
+1) Could I have just used "perf stat"? No, because in this case you will be counting initialization and destruction phases of the process as well. Most of the time it is just a tiny section in the middle that you want to measure.
+
+2) Could I have just generated a CSV with the performance counters and then used R or python to generate the results? Yes, but there is a convenience factor to have everything in a single binary - less moving parts for installation. This way we do not depend on any particular python version or library installed.
+
+============================================================================
+Vitorian LLC
+We are a C++/FinTech startup. Please support our work!
+web: www.vitorian.com/x1
+email: henry@vitorian.com
+linkedin: www.linkedin.com/in/hftrader
+============================================================================
+
+LICENSE: MIT
