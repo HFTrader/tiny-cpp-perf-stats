@@ -42,6 +42,39 @@ After all data collection is done, call snap.summary() passing one header string
 
 When the test runs, the library will take care of starting/stopping performance counters and running some statistical model selection at the end.
 
+## Example
+
+```
+$ ./schedule   (the test app)
+
+PriorityQueue, Event:ReCheck, Cyc/Ins:0.80 Cyc/Bch:531.83 Points:6 Rsq: 1.00 F:0.000000 LL:-6.916004 aic:3.638668 bic:3.499841
+   Term: Constant      p:0.00000 coef:136.678
+   Term: CacheMisses   p:0.00000 coef:132.729
+   Term: BranchMisses  p:0.00000 coef:21.0578
+   Term: N*Log(N)      p:0.00000 coef:5.71472e-05
+PriorityQueue, Event:Refill, Cyc/Ins:0.59 Cyc/Bch:521.00 Points:6 Rsq: 1.00 F:0.000000 LL:-4.949521 aic:2.316507 bic:2.247093
+   Term: Constant      p:0.00000 coef:515.005
+   Term: Log(N)        p:0.03915 coef:0.45287
+PriorityQueue, Event:Check, Cyc/Ins:0.88 Cyc/Bch:496.12 Points:6 Rsq: 1.00 F:0.000000 LL:-23.438262 aic:8.812754 bic:8.708634
+   Term: Constant      p:0.00000 coef:88.5013
+   Term: CacheMisses   p:0.00000 coef:165.089
+   Term: N*Log(N)      p:0.00000 coef:2.80993e-05
+PriorityQueue, Event:FillUp, Cyc/Ins:0.57 Cyc/Bch:613.50 Points:6 Rsq: 1.00 F:0.000000 LL:-23.438262 aic:8.812754 bic:8.708634
+MultiMap, Event:ReCheck, Cyc/Ins:1.48 Cyc/Bch:561.91 Points:6 Rsq: 1.00 F:0.000000 LL:-19.854808 aic:7.618269 bic:7.514149
+   Term: Constant      p:0.00000 coef:57.1476
+   Term: CacheMisses   p:0.00000 coef:39.7849
+   Term: N*Log(N)      p:0.00000 coef:2.47464e-05
+MultiMap, Event:Refill, Cyc/Ins:1.61 Cyc/Bch:320.19 Points:6 Rsq: 0.99 F:0.000011 LL:-42.323127 aic:14.774376 bic:14.704962
+   Term: CacheMisses   p:0.00147 coef:207
+   Term: Log(N)        p:0.00030 coef:180.901
+MultiMap, Event:Check, Cyc/Ins:1.57 Cyc/Bch:836.50 Points:6 Rsq: 1.00 F:0.000000 LL:-7.157631 aic:3.052544 bic:2.983130
+   Term: Constant      p:0.00000 coef:20.1331
+   Term: N*Log(N)      p:0.00000 coef:7.16537e-06
+MultiMap, Event:FillUp, Cyc/Ins:1.33 Cyc/Bch:271.45 Points:6 Rsq: 0.99 F:0.000014 LL:-41.569846 aic:14.523282 bic:14.453869
+   Term: CacheMisses   p:0.00337 coef:170.837
+   Term: Log(N)        p:0.00014 coef:178.206
+```
+
 ## Questions:
 
 1) Could I have just used "perf stat"? No, because in this case you will be counting initialization and destruction phases of the process as well. Most of the time it is just a tiny section in the middle that you want to measure.
