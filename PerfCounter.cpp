@@ -8,6 +8,8 @@
 #include <linux/perf_event.h>
 #include <asm/unistd.h>
 #include <unistd.h>
+#include <linux/perf_event.h>
+#include <linux/hw_breakpoint.h>
 
 PerfCounter::PerfCounter( int event )
 {
@@ -19,14 +21,16 @@ PerfCounter::PerfCounter()
 {
     _fd = -1;
 }
-static inline int perf_event_open( struct perf_event_attr          *hw_event_uptr,
+
+static int perf_event_open( struct perf_event_attr          *hw_event_uptr,
                                    pid_t                           pid,
                                    int                             cpu,
                                    int                             group_fd,
                                    unsigned long                   flags)
 {
-    return syscall(
+    int ret = syscall(
         __NR_perf_event_open, hw_event_uptr, pid, cpu, group_fd, flags);
+    return ret;
 }
 
 
@@ -44,9 +48,10 @@ bool PerfCounter::init( int event, int group ) {
     pe.disabled = 1;
     pe.exclude_kernel = 1;
     pe.exclude_hv = 1;
+    pe.read_format = PERF_FORMAT_GROUP | PERF_FORMAT_ID;
 
     int pid = getpid();
-     int fd = perf_event_open(&pe, pid, -1, group, 0);
+    int fd = perf_event_open(&pe, 0, -1, group, 0);
     if (fd == -1) {
        fprintf(stderr, "Error opening leader %llx\n", pe.config);
     }
