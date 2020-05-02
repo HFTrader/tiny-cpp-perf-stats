@@ -4,7 +4,7 @@
 
 Event::~Event() {}
 
-
+/* We create this class hidden inside a .cpp file exactly so the compiler cannot guess the virtual calls.  */
 
 template< unsigned N >
 class DerivedEvent : public Event
@@ -16,6 +16,9 @@ public:
     }
 };
 
+/** These templates could have been created using SFINAE but I would leave this ugly bastard alone and
+    use instead tag dispatching that is way more elegant.
+*/
 template< uint32_t N1, uint32_t N2 > Event* createOneEvent( uint32_t n );
 
 template< uint32_t N1, uint32_t N2 > Event* createOneEvent( uint32_t n, std::false_type ) {

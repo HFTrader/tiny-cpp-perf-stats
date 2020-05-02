@@ -5,7 +5,6 @@
  * and what is the best solution
  *
  */
-#include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <fcntl.h>
@@ -15,16 +14,21 @@
 #include <stdlib.h>
 #include <string.h>
 #include <linux/limits.h>
-#include <stdint.h>
 #include <xmmintrin.h>
 
+#include <cstdint>
 #include <string>
 #include <atomic>
+#include <set>
 
 #include "Snapshot.h"
+#include "MMapFile.h"
+#include "MicroStats.h"
 
 constexpr bool DEBUG = false;
 
+// Bryce Adelstein Lelbach — The C++20 synchronization library
+// https://www.youtube.com/watch?v=z7fPxjZKsBY
 class BryceSpinLock
 {
 private:
@@ -39,7 +43,8 @@ public:
                 timespec rqtp = {0,0};
                 rqtp.tv_sec = 0; rqtp.tv_nsec = 1000;
                 nanosleep( &rqtp, nullptr );
-                }
+            }
+
         }
     }
     bool try_lock() noexcept {
@@ -58,11 +63,38 @@ public:
     }
 };
 
-class TraditionalSpinLock
+class BryceSimplifiedSpinLock
+{
+private:
+    std::atomic_flag flag = ATOMIC_FLAG_INIT;
+public:
+    void lock() noexcept {
+        for ( std::uint64_t k=0; flag.test_and_set(std::memory_order_acquire); ++k ) {
+            if ( k<4 );
+            else sched_yield();
+        }
+    }
+    bool try_lock() noexcept {
+        return flag.test_and_set(std::memory_order_acquire);
+    }
+    void unlock() noexcept {
+        flag.clear( std::memory_order_release );
+    }
+    bool locked() noexcept {
+        bool locked = flag.test_and_set(std::memory_order_acquire);
+        if ( !locked ) {
+            flag.clear( std::memory_order_release );
+            return false;
+        }
+        return true;
+    }
+};
+
+class TASSpinLock
 {
 public:
-    TraditionalSpinLock() { __sync_lock_release(&val); }
-    ~TraditionalSpinLock() {}
+    TASSpinLock() { __sync_lock_release(&val); }
+    ~TASSpinLock() {}
 
     void lock() noexcept {
         while ( !try_lock() ) {
@@ -84,11 +116,12 @@ private:
     volatile uint32_t val;
 };
 
-class RelaxedSpinLock
+// https://rigtorp.se/spinlock/
+class RigtorpSpinLock
 {
 public:
-    RelaxedSpinLock() : lock_(0) {}
-    ~RelaxedSpinLock() {}
+    RigtorpSpinLock() : lock_(0) {}
+    ~RigtorpSpinLock() {}
 
     void lock() noexcept {
         for (;;) {
@@ -97,7 +130,6 @@ public:
             }
             while ( lock_.load(std::memory_order_relaxed) ) {
                 for ( uint32_t j=0; j<10; ++j ) __builtin_ia32_pause();
-                asm volatile("pause\n": : :"memory");
             }
         }
     }
@@ -115,122 +147,244 @@ private:
     std::atomic<bool> lock_;
 };
 
+uint64_t busywait( uint64_t cycles )
+{
+    uint64_t tstart = __builtin_ia32_rdtsc();
+    uint64_t tend = tstart + cycles;
+    while ( __builtin_ia32_rdtsc() < tend );
+    return __builtin_ia32_rdtsc() - tstart;
+}
 
+struct TestOptions {
+    std::string testname;
+    uint32_t testnum;
+    uint32_t numprocesses;
+    uint32_t numloops;
+    uint32_t verbose = 0;
+    uint32_t offset;
+    uint32_t waitcycles;
+};
 
 template< class SpinLock >
-int testSL( Snapshot& snap, uint32_t numloops, uint32_t offset )
+void testSpinLock( Snapshot& snap, TestOptions& opt )
 {
     // Create path
     char shmname[PATH_MAX];
     ::sprintf( shmname, "mmtest-%d", ::getpid() );
-    int fid = ::shm_open( shmname, O_CREAT|O_RDWR, S_IRWXU|S_IRWXG );
-    if ( fid<0 ) {
-        int err_no = errno;
-        fprintf( stderr, "Cannot open file [%s]: %s\n",
-                 shmname, strerror(err_no) );
-        return 1;
+    MMapFile map;
+    if ( !map.init( shmname, opt.offset+4 ) ) return;
+
+    // Fork children
+    uint32_t procnum = 0;
+    std::vector<pid_t> pids(opt.numprocesses,0);
+    for ( uint32_t j=1; j<opt.numprocesses; ++j ) {
+        pids[j] = fork();
+        if ( pids[j]==0 ) { // Child
+            procnum = j;
+            break;
+        }
     }
 
-    const uint32_t pagesize = getpagesize();
-    const uint32_t mapsize = 16*pagesize;
-    int res = ::ftruncate( fid, mapsize );
-    if ( res<0 ) {
-        int err_no = errno;
-        fprintf( stderr, "Could not truncate shared mem file %s: %s\n",
-                 shmname, strerror( err_no ) );
-        ::close( fid );
-        return false;
-    }
-
-    // Memory map file
-    void* ptr = mmap( NULL, mapsize, PROT_READ|PROT_WRITE, MAP_SHARED, fid, 0 );
-    if ( ptr == MAP_FAILED ) {
-        int err_no = errno;
-        fprintf( stderr, "Cannot memory map file: %s\n", strerror(err_no) );
-        return 1;
-    }
-    ::memset( ptr, 0, mapsize );
-
-    // Fork child
-    uint32_t thcount = 0;
-    pid_t pid = fork();
-    bool isparent = ( pid!=0 );
-    if ( !isparent ) thcount++;
-    const uint32_t MASK = 1;
-    const uint32_t PROCID = isparent ? 0 : 1;
-    const char* prname = !isparent ? "Child" : "Parent";
-    if ( DEBUG )  fprintf( stderr, "[%s] Memory: %p  %d\n", prname, ptr, *((uint32_t*)ptr) );
-    if ( DEBUG ) fprintf( stderr, "[%s] Test starting...\n", prname );
+    void* ptr = map.data();
+    bool isparent = ( procnum==0 );
+    char prname[32];
+    ::sprintf( prname, "Process-%d", procnum );
+    if ( DEBUG )  fprintf( stdout, "[%s] Memory: %p  %d\n", prname, ptr, *((uint32_t*)ptr) );
+    if ( DEBUG ) fprintf( stdout, "[%s] Test starting...\n", prname );
 
     // Start test
     volatile uint32_t* baseptr = (volatile uint32_t*)ptr;
     SpinLock* lock = new((void*)&baseptr[0])SpinLock;
-    volatile uint32_t* counter = &baseptr[offset];
+    volatile uint32_t* counter = &baseptr[opt.offset];
 
-    if ( DEBUG ) fprintf( stderr, "[%s] Status: [%s]\n", prname, lock->locked()? "Locked":"Unlocked" );
-    if ( DEBUG ) fprintf( stderr, "[%s] Starting \n", prname );
+    if ( DEBUG ) fprintf( stdout, "[%s] Status: [%s]\n", prname,
+                          lock->locked()? "Locked":"Unlocked" );
+    if ( DEBUG ) fprintf( stdout, "[%s] Starting \n", prname );
     uint32_t value = 0;
+    MicroStats<3> ustats;
     snap.start();
-    uint64_t t0 = __builtin_ia32_rdtsc();
-    while ( value < numloops ) {
-        if ( DEBUG ) fprintf( stderr, "[%s] Locking...\n", prname );
+    uint64_t sumcycles = 0;
+    while ( value < opt.numloops ) {
+        if ( DEBUG ) fprintf( stdout, "[%s] Locking...\n", prname );
+        uint64_t t0 = __builtin_ia32_rdtsc();
+        _mm_mfence();
         lock->lock();
-        if ( DEBUG ) fprintf( stderr, "[%s] Locked...%d\n", prname, *counter );
-        if ( (*counter & MASK) == PROCID ) {
+        if ( DEBUG ) fprintf( stdout, "[%s] Locked...%d\n", prname, *counter );
+        if ( (*counter % opt.numprocesses ) == procnum ) {
             *counter += 1;
-            if ( DEBUG ) fprintf( stderr, "[%s] Incrementing counter to %d\n", prname, *counter );
+            if ( DEBUG ) fprintf( stdout, "[%s] Incrementing counter to %d\n",
+                                  prname, *counter );
         }
         value = *counter;
-        if ( DEBUG ) fprintf( stderr, "[%s] Unlocking...\n", prname );
+        if ( DEBUG ) fprintf( stdout, "[%s] Unlocking...\n", prname );
         lock->unlock();
-        if ( DEBUG ) fprintf( stderr, "[%s] Unlocked...\n", prname );
+        _mm_mfence();
+        uint64_t t1 = __builtin_ia32_rdtsc();
+        if ( DEBUG ) fprintf( stdout, "[%s] Unlocked...\n", prname );
+        uint64_t elapsed = (t1-t0);
+        sumcycles += elapsed;
+        ustats.add( elapsed );
+        busywait( opt.waitcycles );
     }
-    uint64_t t1 = __builtin_ia32_rdtsc();
-    snap.stop( "Loop", numloops, offset );
-    fprintf( stderr, "[%s] Finished %ld cycles, %ld per loop\n", prname, t1-t0, (t1-t0)/numloops );
-    // Close and remove
-    ::close(fid);
+
+    Snapshot::Sample sample = snap.stop( "Loop", 1, opt.numloops );
+    fprintf( stdout,
+             "%s,%s,Reps,%d,Pad,%d,Wall,%ld,Cyc,%1.1f,Instr,%1.1f,Cache,%1.1f,Branch,%1.1f,"
+             "Pct,%1.0f,%1.0f,%1.0f,%1.0f\n",
+             opt.testname.c_str(),prname, opt.numloops, opt.offset, sumcycles/opt.numloops,
+             sample.cycles, sample.instructions, sample.cachemisses, sample.branchmisses,
+             ustats.percentile(10), ustats.percentile(50), ustats.percentile(90), ustats.percentile(99) );
+
+    // Wait for children
     if ( isparent ) {
         int status = 0;
-        ::waitpid(pid, &status, 0 );
-        usleep( 1000000 );
-        shm_unlink( shmname );
+        for ( uint32_t j=1; j<opt.numprocesses; ++j ) {
+            ::waitpid(pids[j], &status, 0 );
+        }
+        MMapFile::unlink( shmname );
     }
     else {
         exit(0);
     }
 }
 
+const std::array<const char*, 4> testnames = { "RigtorpSpinLock",
+                                               "BryceSpinLock",
+                                               "BryceSimplifiedSpinLock",
+                                               "TASSpinLock" };
+
+struct CommandLineOptions
+{
+    int verbose = 0;
+    std::set<uint32_t> alltests;
+    std::set<uint32_t> alloffsets;
+    std::set<uint32_t> allcycles;
+    std::set<uint32_t> allloops;
+    std::set<uint32_t> allprocesses;
+};
+
+
+void parseCommandLine( int argc, char* argv[], CommandLineOptions& opt )
+{
+    if ( argc<2 ) {
+        std::cout << "Usage: memorymap [options]\n";
+        std::cout << "Options:\n";
+        std::cout << "    -p <number processes> number of processes to run\n";
+        std::cout << "    -t <test number>      test to run (default:all)\n";
+        std::cout << "    -w <cycles>           number of busy cycles to wait\n";
+        std::cout << "    -o <offset>           padding/offset data-to-lock\n";
+        std::cout << "    -r <repetitions>      number of repetitions\n";
+        std::cout << "    -v                    verbose\n";
+        exit(0);
+    }
+
+    std::cout << "Test,Process,Loops,Offset,Cycles,CPUCycles,Instructions,CacheMisses,BranchMisses\n";
+    for ( int j = 1; j<argc; ) {
+        // starts with '--'
+        if ( ::strcmp("-p",argv[j])==0 ) {
+            if ( j+1==argc ) {
+                fprintf( stderr, "Missing -p argument\n" );
+                exit(1);
+            }
+            opt.allprocesses.insert( ::atoi( argv[j+1] ) );
+            j+=2;
+        }
+        else if ( ::strcmp("-t",argv[j])==0 ) {
+            if ( j+1==argc ) {
+                fprintf( stderr, "Missing -t argument\n" );
+                exit(1);
+            }
+            int testnum = ::atoi( argv[j+1] );
+            opt.alltests.insert( testnum );
+            j+=2;
+        }
+        else if ( ::strcmp( "-v", argv[j] )==0 ) {
+            opt.verbose += 1;
+            j+=1;
+        }
+        else if ( ::strcmp( "-o", argv[j] )==0 ) {
+            if ( j+1==argc ) {
+                fprintf( stderr, "Missing -o argument\n" );
+                exit(1);
+            }
+            opt.alloffsets.insert(  ::atoi( argv[j+1] ) );
+            j+=2;
+        }
+        else if ( ::strcmp( "-w", argv[j] )==0 ) {
+            if ( j+1==argc ) {
+                fprintf( stderr, "Missing -w argument\n" );
+                exit(1);
+            }
+            opt.allcycles.insert( ::atoi( argv[j+1] ) );
+            j+=2;
+        }
+        else {
+            fprintf( stderr, "Ignored %d-th argument [%s]\n", j, argv[j] );
+            j+=1;
+        }
+    }
+
+    if ( opt.alltests.empty() ) {
+        for ( uint32_t j=0; j<testnames.size(); ++j )
+            opt.alltests.insert( j );
+    }
+    if ( opt.allprocesses.empty() ) {
+        opt.allprocesses.insert( {2,3,4,5,6,7} );
+    }
+    if ( opt.allcycles.empty() ) {
+        opt.allcycles.insert( {0,16,256,1024,16384} );
+    }
+    if ( opt.alloffsets.empty() ) {
+        opt.alloffsets.insert( {1,16,128} );
+    }
+    if ( opt.allloops.empty() ) {
+        opt.allloops.insert( {1024, 16384, 65536} );
+    }
+}
 
 
 
 int main( int argc, char* argv[] )
 {
-    if ( argc<2 ) {
-        fprintf( stdout, "Usage: test <num> [numloops]\n" );
-        return 0;
-    }
-    uint32_t testnum = ::atoi( argv[1] );
-    uint32_t maxloops = 16384;
-    if ( argc>2 ) {
-        maxloops = ::atoi( argv[2] );
-    }
+    CommandLineOptions options;
+    parseCommandLine( argc, argv, options );
 
-    Snapshot snap;
-    for ( uint32_t numloops = 1024; numloops< maxloops; numloops *= 2 )
+    TestOptions test;
+    for ( uint32_t testnum : options.alltests )
     {
-        for ( uint32_t offset = 1; offset < 1024; offset *= 2 ) {
-            switch ( testnum ) {
-            case 0:
-                testSL<RelaxedSpinLock>( snap, numloops, offset );
-                break;
-            case 1:
-                testSL<BryceSpinLock>( snap, numloops, offset );
-                break;
-            case 2:
-                testSL<TraditionalSpinLock>( snap, numloops, offset );
-                break;
-            };
+        Snapshot snap;
+        for ( uint32_t numprocesses : options.allprocesses )
+        {
+            for ( uint32_t offset : options.alloffsets )
+            {
+                for ( uint32_t numloops : options.allloops )
+                {
+                    for ( uint32_t cycles : options.allcycles )
+                    {
+                        test.testname = testnames[testnum];
+                        test.testnum = testnum;
+                        test.numprocesses = numprocesses;
+                        test.offset = offset;
+                        test.numloops = numloops;
+                        test.waitcycles = cycles;
+                        switch ( testnum ) {
+                        case 0:
+                            testSpinLock<RigtorpSpinLock>( snap, test );
+                            break;
+                        case 1:
+                            testSpinLock<BryceSpinLock>( snap, test );
+                            break;
+                        case 2:
+                            testSpinLock<BryceSimplifiedSpinLock>( snap, test );
+                            break;
+                        case 3:
+                            testSpinLock<TASSpinLock>( snap, test );
+                            break;
+                        };
+                    }
+                }
+            }
         }
+        snap.summary( testnames[testnum] );
     }
 }

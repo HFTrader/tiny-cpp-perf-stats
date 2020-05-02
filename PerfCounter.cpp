@@ -48,7 +48,7 @@ bool PerfCounter::init( int event, int group ) {
     pe.disabled = 1;
     pe.exclude_kernel = 1;
     pe.exclude_hv = 1;
-    pe.read_format = PERF_FORMAT_GROUP | PERF_FORMAT_ID;
+    //pe.read_format = PERF_FORMAT_GROUP | PERF_FORMAT_ID;
 
     int pid = getpid();
     int fd = perf_event_open(&pe, 0, -1, group, 0);

@@ -22,8 +22,14 @@ target_link_libraries( scheduler_lib tinyperfstats )
 add_executable( scheduler  scheduler.cpp )
 target_link_libraries( scheduler scheduler_lib rt )
 
-add_executable( memorymap memorymap.cpp )
+add_executable( memorymap memorymap.cpp MMapFile.cpp )
 target_link_libraries( memorymap tinyperfstats rt )
+
+add_executable( cachevec  cachevec.cpp )
+target_link_libraries( cachevec tinyperfstats rt )
+
+add_executable( testMicroStats testMicroStats.cpp )
+target_link_libraries( testMicroStats rt )
 
 else()
    message( FATAL_ERROR "Your cat fell from the roof..." )

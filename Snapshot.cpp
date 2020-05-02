@@ -4,31 +4,44 @@
 #include <armadillo>
 #include <boost/math/distributions.hpp>
 
-Snapshot::Snapshot() : cycles( PERF_COUNT_HW_CPU_CYCLES ),
-                       instructions( PERF_COUNT_HW_INSTRUCTIONS ),
-                       cachemisses( PERF_COUNT_HW_CACHE_MISSES ),
-                       branchmisses( PERF_COUNT_HW_BRANCH_MISSES )
+Snapshot::Snapshot( int debuglevel )
+    : cycles( PERF_COUNT_HW_CPU_CYCLES ),
+      instructions( PERF_COUNT_HW_INSTRUCTIONS ),
+      cachemisses( PERF_COUNT_HW_CACHE_MISSES ),
+      branchmisses( PERF_COUNT_HW_BRANCH_MISSES ),
+      debug( debuglevel )
 {}
 
 Snapshot::~Snapshot()
 {}
 
 void Snapshot::start() {
+    if ( debug >= 2 )
+        std::cout << "Snapshot start\n";
     cycles.start();
     instructions.start();
     cachemisses.start();
     branchmisses.start();
 }
 
-void Snapshot::stop( const std::string& evname, uint64_t numitems, uint64_t numiterations ) {
-    if ( numiterations==0 ) return;
+Snapshot::Sample Snapshot::stop( const std::string& evname, uint64_t numitems, uint64_t numiterations ) {
     Sample samp;
-    samp.numitems = numitems;
-    samp.cycles = double(cycles.stop())/numiterations;
-    samp.instructions = double(instructions.stop())/numiterations;
-    samp.cachemisses = double(cachemisses.stop())/numiterations;
-    samp.branchmisses = double(branchmisses.stop())/numiterations;
-    samples[evname].push_back( samp );
+    if ( numiterations>0 ) {
+        samp.numitems = numitems;
+        samp.cycles = double(cycles.stop())/numiterations;
+        samp.instructions = double(instructions.stop())/numiterations;
+        samp.cachemisses = double(cachemisses.stop())/numiterations;
+        samp.branchmisses = double(branchmisses.stop())/numiterations;
+        samples[evname].push_back( samp );
+    }
+    if ( debug >= 2 )
+        std::cout << "Snapshot stop, Items:" << numitems
+                  << " Cycles:" << samp.cycles
+                  << " Instr:" << samp.instructions << " CacheMiss:"
+                  << samp.cachemisses << " BranchMiss:" << samp.branchmisses
+                  << " NumIter:" << numiterations << "\n";
+
+    return samp;
 }
 
 static std::vector<uint32_t> calcMask( uint32_t num ) {
@@ -131,8 +144,7 @@ bool RegResults::solve()
         fpval = 1 - cdf(ff,fval);
 
         // log likelihood for model selection with Akaike information coefficients
-        loglik = -(nobs*0.5)*(1+log(2*M_PI))
-            - (nobs/2.)*log( arma::dot(res,res)/nobs );
+        loglik = -(nobs*0.5)*(1+log(2*M_PI)) - (nobs/2.)*log( arma::dot(res,res)/nobs );
         aic = -(2.*loglik)/nobs + double(2*ncoef)/nobs;
         bic = -(2.*loglik)/nobs + double(ncoef*log(nobs))/nobs;
     }
@@ -143,7 +155,13 @@ bool RegResults::solve()
     return true;
 }
 
-void Snapshot::summary( const std::string& header, FILE* f ) {
+void Snapshot::summary( const std::string& header, FILE* f )
+{
+    static const std::vector<std::string> colnames  = { "Constant",
+                                                        "CacheMisses",
+                                                        "BranchMisses",
+                                                        "Log(N)", "N",
+                                                        "N*Log(N)", "N^2" };
 
     // cycle through events map
     for ( const auto& ism: samples )
@@ -184,8 +202,6 @@ void Snapshot::summary( const std::string& header, FILE* f ) {
                 uint32_t modelnum = k + ( 1 << (np+3) );
                 RegResults reg;
                 if ( calcModel( modelnum, C, b, reg ) ) {
-                    if ( reg.sol.min()<0 )
-                        continue;
                     if ( reg.pval.max()>0.05 )
                         continue;
 
@@ -195,6 +211,21 @@ void Snapshot::summary( const std::string& header, FILE* f ) {
                         found = true;
                     }
                 }
+                if ( debug>0 ) {
+                    fprintf( f, "%s, Event:%s, Cyc/Ins:%3.2f Cyc/Bch:%3.2f Points:%d Rsq:%5.2f F:%f LL:%f aic:%f bic:%f \n",
+                             header.c_str(), evname.c_str(),
+                             cycinstr, cycbranch, numpoints,
+                             reg.rsq, reg.fpval,
+                             reg.loglik, reg.aic, reg.bic );
+
+                    auto mask = calcMask( bestmodel );
+                    for ( unsigned j=0; j<mask.size(); ++j ) {
+                        fprintf( f, "   Term: %-12s  p:%7.5f coef:%g\n",
+                                 colnames[mask[j]].c_str(),
+                                 reg.pval(j),
+                                 reg.sol(j) );
+                    }
+                }
             }
         }
 
@@ -202,12 +233,7 @@ void Snapshot::summary( const std::string& header, FILE* f ) {
             fprintf( f, "    Model did not converge\n" );
         }
         else {
-            std::vector<std::string> colnames  = { "Constant",
-                                                   "CacheMisses",
-                                                   "BranchMisses",
-                                                   "Log(N)", "N",
-                                                   "N*Log(N)", "N^2" };
-            fprintf( f, "%s, Event:%s, Cyc/Ins:%3.2f Cyc/Bch:%3.2f Points:%d Rsq:%5.2f F:%f LL:%f aic:%f bic:%f \n",
+            fprintf( f, "\n========== Best Model\n%s, Event:%s, Cyc/Ins:%3.2f Cyc/Bch:%3.2f Points:%d Rsq:%5.2f F:%f LL:%f aic:%f bic:%f \n",
                      header.c_str(), evname.c_str(),
                      cycinstr, cycbranch, numpoints,
                      bestreg.rsq, bestreg.fpval,
