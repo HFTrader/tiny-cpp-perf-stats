@@ -2,7 +2,6 @@ if ( NOT CMAKE_BUILD_TYPE )
   set( CMAKE_BUILD_TYPE "Release" CACHE STRING "Build type: release, debug, relwithdebinfo" FORCE )
 endif()
 
-
 project( tiny-perf-stats )
 cmake_minimum_required( VERSION 3.2 )
 
@@ -31,9 +30,12 @@ target_link_libraries( cachevec tinyperfstats rt )
 add_executable( testMicroStats testMicroStats.cpp )
 target_link_libraries( testMicroStats rt )
 
+add_executable( testCacheSize testCacheSize.cpp )
+target_link_libraries( testCacheSize rt )
+
 else()
    message( FATAL_ERROR "Your cat fell from the roof..." )
 endif()
 
-install( TARGETS tinyperfstats scheduler_lib scheduler
+install( TARGETS tinyperfstats scheduler_lib scheduler memorymap cachevec testMicroStats testCacheSize
   ARCHIVE DESTINATION lib LIBRARY DESTINATION lib RUNTIME DESTINATION bin )
