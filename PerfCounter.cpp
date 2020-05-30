@@ -22,11 +22,11 @@ PerfCounter::PerfCounter()
     _fd = -1;
 }
 
-static int perf_event_open( struct perf_event_attr          *hw_event_uptr,
-                                   pid_t                           pid,
-                                   int                             cpu,
-                                   int                             group_fd,
-                                   unsigned long                   flags)
+static int perf_event_open( struct perf_event_attr *hw_event_uptr,
+                                   pid_t pid,
+                                   int cpu,
+                                   int group_fd,
+                                   unsigned long flags )
 {
     int ret = syscall(
         __NR_perf_event_open, hw_event_uptr, pid, cpu, group_fd, flags);
