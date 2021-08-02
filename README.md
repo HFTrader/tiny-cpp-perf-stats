@@ -18,6 +18,9 @@ A test was created that uses the scheduler problem implemented in two naive ways
 - std::multimap
 - std::priority_queue
 
+
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/Z8Z85JMPK)
+
 ## Dependencies:
 
 - Boost math/statistics
