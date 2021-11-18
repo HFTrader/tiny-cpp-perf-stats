@@ -8,8 +8,10 @@ include( FindPkgConfig )
 
 find_package( Boost REQUIRED )
 find_package( Armadillo REQUIRED )
+find_package( LAPACK REQUIRED )
 pkg_check_modules( CairoMM cairomm-1.0 cairomm-png-1.0 cairomm-svg-1.0 )
-set( REQUIRED_LIBS rt armadillo )
+set( REQUIRED_LIBS rt ${ARMADILLO_LIBRARY} ${LAPACK_LIBRARY} arpack )
+include_directories( ${ARMADILLO_INCLUDE_DIR} )
 if ( CairoMM_FOUND )
   add_definitions( -DCairoMM_FOUND )
   list( APPEND REQUIRED_LIBS ${CairoMM_LIBRARIES} )
@@ -41,6 +43,10 @@ target_link_libraries( testMicroStats ${REQUIRED_LIBS} )
 add_executable( testCacheSize testCacheSize.cpp )
 target_link_libraries( testCacheSize ${REQUIRED_LIBS} )
 
+add_library( DuffLoopHelpers DuffLoopHelpers.cpp )
+add_executable( testDuffLoop testDuffLoop.cpp )
+target_link_libraries( testDuffLoop ${REQUIRED_LIBS} DuffLoopHelpers )
+
 else()
    message( FATAL_ERROR "Your cat fell from the roof..." )
 endif()
@@ -50,4 +56,5 @@ install( TARGETS
   scheduler_lib  testScheduler
   testMemoryMap testCacheVec
   testMicroStats testCacheSize
+  testDuffLoop 
   ARCHIVE DESTINATION lib LIBRARY DESTINATION lib RUNTIME DESTINATION bin )
