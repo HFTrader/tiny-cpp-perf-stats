@@ -6,6 +6,7 @@
 
 #include <x86intrin.h>
 
+
 std::uint64_t tic() {
     return __rdtsc();
 }
@@ -42,6 +43,11 @@ std::uint64_t tic() {
 }
 
 #endif
+
+template< typename T >
+inline void DoNotOptimize(T const& value) {
+  asm volatile("" : : "r,m"(value) : "memory");
+}
 
 template< typename Fn, typename HistT >
 void timeit( HistT& hist, const std::uint32_t loops, Fn&& fn )

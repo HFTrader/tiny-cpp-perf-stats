@@ -27,6 +27,73 @@ void Snapshot::start()
     branchmisses.start();
 }
 
+std::string human( double value, int size ) {
+    if ( value == 0 ) return "0";
+    int width = size;
+    int precision = 0;
+    const char* neg = "";
+    const char* prefix = "";
+    const char* suffix = "";
+    if ( value < 0 ) { 
+        neg = "-";
+        value = -value;
+    }
+    double vlog = log(abs(value))/log(10);
+    int ilog = lrint(floor(vlog));
+    if ( ilog >= 0 ) {
+        if ( ilog < 3 ) {
+            precision = size - ilog;
+        }
+        else if ( ilog < 6 ) {
+            value = value / 1E3;
+            suffix = "k";
+        }
+        else if ( ilog < 9 ) {
+            value = value / 1E6;
+            suffix = "M";
+        }
+        else if ( ilog < 12 ) {
+            value = value / 1E9;
+            suffix = "G";
+        }
+        else {
+            value = value / 1E12;
+            suffix = "T";
+        }
+    }
+    else {
+        ilog = -ilog;
+        prefix = "1:";
+        value = 1/value;
+        if ( value < 0 ) {
+            value = -value;
+            prefix="-1:";
+        }        
+        if ( ilog < 3 ) {
+            precision = size - ilog;
+        }
+        else if ( ilog < 6 ) {
+            value = value / 1E3;
+            suffix = "m";
+        }
+        else if ( ilog < 9 ) {
+            value = value / 1E6;
+            suffix = "u";
+        }
+        else if ( ilog < 12 ) {
+            value = value / 1E9;
+            suffix = "n";
+        }
+        else {
+            value = value / 1E12;
+            suffix = "p";
+        }
+    }
+    char str[256];
+    ::snprintf( str, sizeof(str), "%s%s%.*f%s", neg, prefix, precision, value, suffix );
+    return str;
+}
+
 Snapshot::Sample Snapshot::stop(const std::string &evname, uint64_t numitems, uint64_t numiterations)
 {
     Sample samp;
@@ -40,11 +107,10 @@ Snapshot::Sample Snapshot::stop(const std::string &evname, uint64_t numitems, ui
         samples[evname].push_back(samp);
     }
     if (debug >= 2)
-        std::cout << "Snapshot stop, Items:" << numitems
-                  << " Cycles:" << samp.cycles
-                  << " Instr:" << samp.instructions << " CacheMiss:"
-                  << samp.cachemisses << " BranchMiss:" << samp.branchmisses
-                  << " NumIter:" << numiterations << "\n";
+        std::cout << "Statistics:\n\t" << numitems << " items\n\t" << numiterations << " iterations\n\t"
+                  << human(samp.cycles,3) << " cycles/item\n\t" << human(samp.instructions,3) << " instructions/item\n\t"
+                  << human(samp.cachemisses,3) << " cache misses/item\n\t" << human(samp.branchmisses,3)
+                  << " branch misses\n";
 
     return samp;
 }

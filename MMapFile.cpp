@@ -5,6 +5,9 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <string.h>
+#include <array>
+
+
 
 MMapFile::MMapFile()
     : _fid(-1), _ptr(nullptr), _mapsize(0)

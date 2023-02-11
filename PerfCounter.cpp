@@ -52,23 +52,33 @@ bool PerfCounter::init( int event, int group ) {
 
     int pid = getpid();
     int fd = perf_event_open(&pe, 0, -1, group, 0);
-    if (fd == -1) {
+    if (fd < 0 ) {
        fprintf(stderr, "Error opening leader %llx\n", pe.config);
     }
     _fd = fd;
+    return true;
 }
 
 bool PerfCounter::start() {
     if ( _fd<0 ) return false;
-    ioctl(_fd, PERF_EVENT_IOC_RESET, 0);
-    ioctl(_fd, PERF_EVENT_IOC_ENABLE, 0);
+    int res = ioctl(_fd, PERF_EVENT_IOC_RESET, 0);
+    if ( res!=0 ) {
+        fprintf( stderr, "Error on PERF_EVENT_IOC_RESET: %s", strerror(errno));
+    }
+    res = ioctl(_fd, PERF_EVENT_IOC_ENABLE, 0);
+    if ( res!=0 ) {
+        fprintf( stderr, "Error on PERF_EVENT_IOC_ENABLE: %s", strerror(errno));
+    }
     return true;
 }
 
 uint64_t PerfCounter::stop() {
     uint64_t count = 0;
     if ( _fd>=0 ) {
-        ioctl(_fd, PERF_EVENT_IOC_DISABLE, 0);
+        int res = ioctl(_fd, PERF_EVENT_IOC_DISABLE, 0);
+        if ( res!=0 ) {
+            fprintf( stderr, "Error on PERF_EVENT_IOC_DISABLE: %s", strerror(errno));
+        }
         int nb = read(_fd, &count, sizeof(count) );
         if ( nb!=sizeof(count) ) return 0;
     }

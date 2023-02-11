@@ -342,10 +342,77 @@ void parseCommandLine( int argc, char* argv[], CommandLineOptions& opt )
     }
 }
 
+#include <fstream>
+#include <iostream>
 
+struct strproxy {
+    const char* start;
+    size_t length;
+    strproxy() {
+        start = nullptr;
+        length = 0;
+    }
+    strproxy( const std::string& str ) {
+        start = str.data();
+        length = str.size();
+    }
+    strproxy( const std::string& str, size_t size ) {
+        start = str.data();
+        length = size;
+    }
+    strproxy( const std::string& str, size_t pos, size_t size ) {
+        start = str.data() + pos;
+        length = size-pos;
+    }
+    template< std::size_t N >
+    strproxy( const char (&value)[N] ) {
+        start = value;
+        length = N-1;
+    }
+    operator std::string() const { 
+        return std::string( start, length );
+    }
+    bool operator == ( const strproxy& rhs ) {
+        if ( length != rhs.length ) return false;
+        return ::memcmp(start,rhs.start,length) == 0;
+    }
+};
+
+static int64_t getHugePageSize() 
+{
+    FILE* fs = fopen("/proc/meminfo","r");
+    while ( true ) {
+        char buffer[256];
+        const char* s = fgets(buffer,sizeof(buffer),fs);
+        if ( s!=buffer ) break;
+        s = strstr(buffer,"Hugepagesize");
+        if ( s != nullptr ) {
+            s = strchr(s,':');
+            if ( s!= nullptr ) {
+                char* ends = nullptr;
+                long value = strtol(++s,&ends,10);
+                if ( ends != s ) {
+                    if ( strstr(ends,"kB") != nullptr ) {
+                        return value * 1024;
+                    }                    
+                    if ( strstr(ends,"mB") != nullptr ) {
+                        return value * (1024*1024);
+                    }                    
+                    if ( strstr(ends,"gB") != nullptr ) {
+                        return value * (1024*1024*1024);
+                    }                   
+                }
+            }
+        }
+    }
+    return -1;
+}
 
 int main( int argc, char* argv[] )
 {
+    int64_t hugepagesize = getHugePageSize();
+    std::cout << "Huge page size:" << hugepagesize << std::endl;
+
     CommandLineOptions options;
     parseCommandLine( argc, argv, options );
 

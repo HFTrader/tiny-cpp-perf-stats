@@ -9,6 +9,7 @@
 #include <numeric>
 #include <random>
 
+
 std::string str( std::uint32_t size ) {
     char buf[64];
     if ( size < 1<<10 ) {
@@ -195,9 +196,9 @@ void calcResults()
                             return maxsize;
                         });
                 }
-                for ( std::uint32_t val : vpos ) sum += val;
+                DoNotOptimize( pos );
             }
-            std::cout << "Policy," << Policy::Name << ",Stride," << stride << ",Size," << size << ",Pos," << pos << ",Vpos," << sum << ",";
+            std::cout << "Policy," << Policy::Name << ",Stride," << stride << ",Size," << size << ",";
             for ( std::uint32_t pct : Policy::Percentiles ) {
                 double val = hist.pct( pct );
                 std::cout << pct << "," << val << ",";
@@ -245,6 +246,7 @@ struct RandomReadWrite  : public Defaults {
     static constexpr bool ReadWrite = true;
     static constexpr FillPattern Pattern = FillPattern::Random;
 };
+
 
 
 int main( int argc, char* argv[] )

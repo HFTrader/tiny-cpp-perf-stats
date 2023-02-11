@@ -38,7 +38,7 @@ void testme( Snapshot& snap, const EventVec& events, uint32_t numitems )
     for ( OrderBook& ev : vec ) {
         ev.count = 0;
     }
-    std::cout << ">> Run: " << numitems << std::endl;
+    std::cout << ">> Run: " << numitems << " Events:" << events.size() << std::endl;
     snap.start();
     uint64_t counter = 0;
     for ( const Event& ev : events ) {
@@ -137,7 +137,7 @@ int main( int argc, char* argv[] )
             }
             //std::cout << "." << std::flush;
         };
-        std::cout << "\nSorting tickers..." << std::endl;
+        std::cout << "\nSorting " << events.size() << " tickers..." << std::endl;
         std::sort( events.begin(), events.end(),
                    []( const Event& a, const Event& b )
                    { return a.time<b.time; } );
