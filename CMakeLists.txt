@@ -8,7 +8,7 @@ include( FindPkgConfig )
 
 find_package( Boost REQUIRED )
 find_package( Armadillo REQUIRED )
-find_package( LAPACK REQUIRED )
+#find_package( LAPACK REQUIRED )
 pkg_check_modules( CairoMM cairomm-1.0 cairomm-png-1.0 cairomm-svg-1.0 )
 set( REQUIRED_LIBS rt ${ARMADILLO_LIBRARY} ${LAPACK_LIBRARY} arpack )
 include_directories( ${ARMADILLO_INCLUDE_DIR} )

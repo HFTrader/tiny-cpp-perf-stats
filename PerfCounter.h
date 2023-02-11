@@ -7,10 +7,11 @@
     is not very performance-oriented. For cases with multiple sensors it is
     better to use the memory mapped interface which we dont provide here.
 */
-class PerfCounter {
+class PerfCounter
+{
 public:
     /** Constructor that also initializes the underlying file */
-    PerfCounter( int );
+    PerfCounter(unsigned int, long long);
 
     /** Constructor does not initialize */
     PerfCounter();
@@ -19,7 +20,7 @@ public:
     ~PerfCounter();
 
     /** Initializes the underlying file */
-    bool init( int event, int group = -1 );
+    bool init(unsigned type, long long event, int group = -1);
 
     /** Returns the underlying file ID - just used for grouping purposes */
     int fid();
