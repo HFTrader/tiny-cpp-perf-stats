@@ -1,150 +1,175 @@
-#include <cstdint>
-#include <vector>
 #include <algorithm>
-#include <iostream>
+#include <cstdint>
+#include <cstring>
+#include <cassert>
 #include <fstream>
+#include <iostream>
 #include <map>
 #include <random>
 #include <sstream>
+#include <vector>
+#include <unordered_map>
+
+#include <boost/container/flat_map.hpp>
+#include <boost/random/mersenne_twister.hpp>
+#include <boost/random/uniform_int_distribution.hpp>
+
 #include "Snapshot.h"
-#include "SelectiveCacheVector.h"
 
 struct OrderBook {
-    uint32_t count;
-    uint8_t dummy[1024*128];
+    uint32_t count = 0;
+    uint8_t dummy[16 * 1024];
 };
 
 struct Ticker {
+    char name[8];
+    bool operator<(const Ticker& rhs) const {
+        return std::memcmp(name, rhs.name, sizeof(name)) < 0;
+    }
+    bool operator==(const Ticker& rhs) const {
+        return std::memcmp(name, rhs.name, sizeof(name)) == 0;
+    }
+    Ticker& operator=(const std::string& rhs) {
+        memset(name, 0, sizeof(name));
+        strncpy(name, rhs.c_str(), sizeof(name));
+        return *this;
+    }
+    Ticker& operator=(const Ticker& rhs) {
+        if (&rhs != this) {
+            memset(name, 0, sizeof(name));
+            std::memcpy(name, rhs.name, sizeof(name));
+        }
+        return *this;
+    }
+    friend std::ostream& operator<<(std::ostream& out, const Ticker& ticker) {
+        return out << std::string(ticker.name);
+    }
+};
+
+template <>
+struct std::hash<Ticker> {
+    std::size_t operator()(Ticker const& s) const noexcept {
+        const uint64_t* ptr = reinterpret_cast<const uint64_t*>(s.name);
+        return h(*ptr);
+    }
+    std::hash<uint64_t> h;
+};
+
+struct TickerInfo {
     uint32_t index;
-    std::string ticker;
+    Ticker ticker;
     uint64_t volume;
 };
 
 struct Event {
-    uint32_t index;
+    Ticker ticker;
     uint64_t time;
     uint32_t count;
 };
 
-using EventVec = std::vector< Event >;
-using TickerVec = std::vector< Ticker >;
-using TickerMap = std::map< std::string, uint32_t >;
+using EventVec = std::vector<Event>;
+using TickerVec = std::vector<TickerInfo>;
 
-//template< template <typename> class VectorType = std::vector >
-template< typename VectorType = std::vector<OrderBook> >
-void testme( Snapshot& snap, const EventVec& events, uint32_t numitems )
-{
-    VectorType vec( numitems );
-    for ( OrderBook& ev : vec ) {
-        ev.count = 0;
+template <template <typename Key, typename... Value> class MapType>
+void testme(const std::string& key, Snapshot& snap, const TickerVec& tickers,
+            uint32_t numevents, uint32_t numtickers) {
+    // Initialize the entire map
+    MapType<Ticker, OrderBook> bookmap{};
+    for (uint32_t j = 0; j < numtickers; ++j) {
+        bookmap[tickers[j].ticker].count = 0;
     }
-    std::cout << ">> Run: " << numitems << " Events:" << events.size() << std::endl;
+
+    // Run searching
+    boost::random::mt19937 rng;
+    boost::random::uniform_int_distribution<> chance(0, numtickers - 1);
     snap.start();
     uint64_t counter = 0;
-    for ( const Event& ev : events ) {
-        vec[ ev.index ].count += 1;
+    for (uint32_t j = 0; j < numevents; ++j) {
+        uint32_t idx = chance(rng);
+        OrderBook& book(bookmap[tickers[idx].ticker]);
+        book.count += 1;
         counter++;
     }
-    snap.stop( "Traverse", numitems, events.size() );
-    for ( OrderBook& ev : vec ) {
-        counter -= ev.count;
+    snap.stop(key, numtickers, numevents);
+
+    // Check the counter
+    for (auto& ev : bookmap) {
+        counter -= ev.second.count;
     }
-    if ( counter!=0 )
-        std::cout << "Counter left:" << counter << std::endl;
+    assert(counter == 0);
 }
 
-bool split( const std::string& str, char separator,
-               std::string& first, std::string& second ) {
-    std::string::size_type p1 = str.find_first_of( separator );
-    if ( p1==std::string::npos ) {
+bool split(const std::string& str, char separator, std::string& first,
+           std::string& second) {
+    std::string::size_type p1 = str.find_first_of(separator);
+    if (p1 == std::string::npos) {
         return false;
     }
-    std::string::size_type p2 = str.find_first_of( separator, p1+1 );
-    if ( p2==std::string::npos ) {
-        first = str.substr( 0, p1 );
-        second = str.substr( p1+1 );
+    std::string::size_type p2 = str.find_first_of(separator, p1 + 1);
+    if (p2 == std::string::npos) {
+        first = str.substr(0, p1);
+        second = str.substr(p1 + 1);
         return true;
     }
-    first = str.substr( 0, p1 );
-    second = str.substr( p1+1, p2-p1-1 );
+    first = str.substr(0, p1);
+    second = str.substr(p1 + 1, p2 - p1 - 1);
     return true;
 }
 
-template< typename Fn >
-void getTickers( const std::string& filename, Fn fn ) {
+template <typename Fn>
+void getTickers(const std::string& filename, Fn fn) {
     std::cout << "Opening file " << filename << std::endl;
-    std::ifstream ifs( filename );
-    while ( ifs.good() ) {
+    std::ifstream ifs(filename);
+    while (ifs.good()) {
         try {
             std::string line;
-            std::getline( ifs, line, '\n' );
-            //std::cout << line << std::endl;
+            std::getline(ifs, line, '\n');
+            // std::cout << line << std::endl;
             std::string ticker, svolume;
-            if ( split( line, ',', ticker, svolume ) ) {
-                //std::cout << "    " << ticker << ", " << svolume << std::endl;
-                uint64_t volume = std::stol( svolume );
-                fn( ticker, volume );
+            if (split(line, ',', ticker, svolume)) {
+                // std::cout << "    " << ticker << ", " << svolume << std::endl;
+                uint64_t volume = std::stol(svolume);
+                fn(ticker, volume);
             }
-        }
-        catch( ... ) {
+        } catch (...) {
         }
     }
 }
 
-
-int main( int argc, char* argv[] )
-{
+int main(int argc, char* argv[]) {
+    double totalvolume = 0;
     TickerVec tickers;
-    auto tickproc = [&tickers](
-        const std::string& ticker,
-        uint64_t volume )
-    {
+    auto tickproc = [&tickers, &totalvolume](const std::string& ticker, uint64_t volume) {
         uint32_t index = tickers.size();
-        Ticker tk;
+        TickerInfo tk;
         tk.index = index;
         tk.ticker = ticker;
         tk.volume = volume;
-        tickers.push_back( tk );
+        totalvolume += volume;
+        tickers.push_back(tk);
     };
-    getTickers( "Bats_Volume_2016-05-03.csv", tickproc );
+    getTickers("Bats_Volume_2016-05-03.csv", tickproc);
 
-    std::random_shuffle( tickers.begin(), tickers.end() );
+    // Sort tickers by volume order. This guarantees that the volume will
+    // be pretty much constant across all tests
+    std::sort(tickers.begin(), tickers.end(),
+              [](const TickerInfo& lhs, const TickerInfo& rhs) {
+                  return lhs.volume > rhs.volume;
+              });
 
-    Snapshot snap(2);
-    for ( uint32_t numitems : { 10, 50, 100, 250, 500, 1000, 2500, 5000 } ) {
-
-        EventVec events;
-
-        std::random_device rd;
-        std::mt19937 gen(rd());
-        gen.seed( time(NULL) );
-
-        for ( const auto& tk : tickers ) {
-            if ( tk.index>=numitems ) continue;
-            Event ev;
-            ev.index = tk.index;
-            constexpr uint64_t ONEDAY = 86400000000ULL;
-            uint64_t avgvolume = tk.volume/50;
-            if ( avgvolume<=0 ) continue;
-            uint64_t avgtime = ONEDAY/avgvolume;
-            if ( avgtime<=0 ) continue;
-
-            std::poisson_distribution<uint64_t> d(avgtime);
-            for ( double tm = d(gen); tm<ONEDAY; tm += d(gen) ) {
-                ev.time = tm;
-                events.push_back( ev );
-                //std::cout << " " << tm << "," << ticker << std::endl;
-            }
-            //std::cout << "." << std::flush;
-        };
-        std::cout << "\nSorting " << events.size() << " tickers..." << std::endl;
-        std::sort( events.begin(), events.end(),
-                   []( const Event& a, const Event& b )
-                   { return a.time<b.time; } );
-
-        testme< std::vector<OrderBook> >( snap, events, numitems );
+    const size_t numevents = 20000;
+    Snapshot snap(1);
+    for (uint32_t numtickers : {750, 1000, 2000, 3000, 4000, 5000, 6500}) {
+        std::cout << "Tickers:" << numtickers << std::endl;
+        for (int j = 0; j < 5; ++j) {
+            testme<boost::container::flat_map>("boost::flat_map", snap, tickers,
+                                               numevents, numtickers);
+            testme<std::map>("std::map", snap, tickers, numevents, numtickers);
+            testme<std::unordered_map>("std::unordered_map", snap, tickers, numevents,
+                                       numtickers);
+        }
     }
-    snap.summary( "std::vector" );
+    snap.summary("Map");
 
     return 0;
 }
