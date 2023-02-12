@@ -9,12 +9,22 @@
 #include <sstream>
 #include <vector>
 #include <unordered_map>
+#include <chrono>
 
 #include <boost/container/flat_map.hpp>
 #include <boost/random/mersenne_twister.hpp>
 #include <boost/random/uniform_int_distribution.hpp>
 
 #include "Snapshot.h"
+
+static double now() {
+    timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    double secs = ts.tv_sec + double(ts.tv_nsec) * 1E-9;
+    // printf("\n>> %ld %ld %10.2f\n", ts.tv_nsec, ts.tv_sec, secs);
+    // std::cout << ts.tv_nsec << " " << ts.tv_sec << " " << secs << std::endl;
+    return secs;
+}
 
 struct OrderBook {
     uint32_t count = 0;
@@ -72,7 +82,7 @@ using TickerVec = std::vector<TickerInfo>;
 
 template <template <typename Key, typename... Value> class MapType>
 void testme(const std::string& key, Snapshot& snap, const TickerVec& tickers,
-            uint32_t numevents, uint32_t numtickers) {
+            uint32_t numevents, uint32_t numtickers, double runsecs) {
     // Initialize the entire map
     MapType<Ticker, OrderBook> bookmap{};
     for (uint32_t j = 0; j < numtickers; ++j) {
@@ -84,13 +94,16 @@ void testme(const std::string& key, Snapshot& snap, const TickerVec& tickers,
     boost::random::uniform_int_distribution<> chance(0, numtickers - 1);
     snap.start();
     uint64_t counter = 0;
-    for (uint32_t j = 0; j < numevents; ++j) {
-        uint32_t idx = chance(rng);
-        OrderBook& book(bookmap[tickers[idx].ticker]);
-        book.count += 1;
-        counter++;
-    }
-    snap.stop(key, numtickers, numevents);
+    double start = now();
+    do {
+        for (uint32_t j = 0; j < numevents; ++j) {
+            uint32_t idx = chance(rng);
+            OrderBook& book(bookmap[tickers[idx].ticker]);
+            book.count += 1;
+            counter++;
+        }
+    } while (now() < start + runsecs);
+    snap.stop(key, numtickers, counter);
 
     // Check the counter
     for (auto& ev : bookmap) {
@@ -149,6 +162,10 @@ int main(int argc, char* argv[]) {
         tickers.push_back(tk);
     };
     getTickers("Bats_Volume_2016-05-03.csv", tickproc);
+    if (tickers.empty()) {
+        std::cerr << "Could not read tickers file" << std::endl;
+        return 1;
+    }
 
     // Sort tickers by volume order. This guarantees that the volume will
     // be pretty much constant across all tests
@@ -157,17 +174,16 @@ int main(int argc, char* argv[]) {
                   return lhs.volume > rhs.volume;
               });
 
-    const size_t numevents = 20000;
+    const size_t numevents = 2000;
+    const double runsecs = 0.5;
     Snapshot snap(1);
-    for (uint32_t numtickers : {750, 1000, 2000, 3000, 4000, 5000, 6500}) {
+    for (uint32_t numtickers = 400; numtickers < 6500; numtickers += 200) {
         std::cout << "Tickers:" << numtickers << std::endl;
-        for (int j = 0; j < 5; ++j) {
-            testme<boost::container::flat_map>("boost::flat_map", snap, tickers,
-                                               numevents, numtickers);
-            testme<std::map>("std::map", snap, tickers, numevents, numtickers);
-            testme<std::unordered_map>("std::unordered_map", snap, tickers, numevents,
-                                       numtickers);
-        }
+        testme<boost::container::flat_map>("boost::flat_map", snap, tickers, numevents,
+                                           numtickers, runsecs);
+        testme<std::map>("std::map", snap, tickers, numevents, numtickers, runsecs);
+        testme<std::unordered_map>("std::unordered_map", snap, tickers, numevents,
+                                   numtickers, runsecs);
     }
     snap.summary("Map");
 

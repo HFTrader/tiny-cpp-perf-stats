@@ -237,10 +237,11 @@ void Snapshot::summary(const std::string &header, FILE *f) {
         {2, "CacheMisses", [](const Sample &s) { return s.cachemisses; }},
         {3, "BranchMisses", [](const Sample &s) { return s.branchmisses; }},
         {4, "TLBMisses", [](const Sample &s) { return s.tlbmisses; }},
-        {5, "Log(N)", [](const Sample &s) { return log(s.numitems); }},
+        {5, "Log(N)", [](const Sample &s) { return log(s.numitems) / log(10); }},
         {5, "N", [](const Sample &s) { return s.numitems; }},
-        {5, "N*Log(N)", [](const Sample &s) { return s.numitems * log(s.numitems); }},
-        {5, "N^2", [](const Sample &s) { return s.numitems * log(s.numitems); }}};
+        {5, "N*Log(N)",
+         [](const Sample &s) { return s.numitems * log(s.numitems) / log(10); }},
+        {5, "N^2", [](const Sample &s) { return s.numitems * s.numitems; }}};
 
     // cycle through events map
     for (const auto &ism : samples) {
@@ -331,16 +332,21 @@ void Snapshot::summary(const std::string &header, FILE *f) {
                 fprintf(f, "   Term: %-12s  p:%7.5f coef:%g\n",
                         metrics[mask[j]].name.c_str(), bestreg.pval(j), bestreg.sol(j));
             }
-            if (debug > 1) {
+            if (debug > 0) {
+                for (unsigned j = 0; j < mask.size(); ++j) {
+                    fprintf(f, "%s ", metrics[mask[j]].name.c_str());
+                }
+                fprintf(f, "\n");
                 for (unsigned j = 0; j < numpoints; ++j) {
                     const Sample &sm(svec[j]);
                     double sum = 0;
                     for (unsigned j = 0; j < mask.size(); ++j) {
                         double value = metrics[mask[j]].calc(sm);
-                        sum += value * bestreg.sol(j);
+                        double partial = value * bestreg.sol(j);
+                        fprintf(f, "%f ", partial);
+                        sum += partial;
                     }
-                    std::cout << "    " << j << " Got:" << double(sm.cycles)
-                              << " Expected:" << sum << std::endl;
+                    fprintf(f, " = %f  expected %f\n", sum, double(sm.cycles));
                 }
             }
         }
