@@ -16,28 +16,35 @@
 #include <boost/random/uniform_int_distribution.hpp>
 
 #include "Snapshot.h"
+#include "Allocators.h"
 
+// Returns time in nanoseconds from epoch
 static double now() {
     timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     double secs = ts.tv_sec + double(ts.tv_nsec) * 1E-9;
-    // printf("\n>> %ld %ld %10.2f\n", ts.tv_nsec, ts.tv_sec, secs);
-    // std::cout << ts.tv_nsec << " " << ts.tv_sec << " " << secs << std::endl;
     return secs;
 }
 
+// A fake order book
 struct OrderBook {
     uint32_t count = 0;
-    uint8_t dummy[16 * 1024];
+    uint8_t dummy[128];
 };
 
+// Represents a ticker
+// It has fast comparison operators using the fact that
+// the ticker value has 8 bytes
 struct Ticker {
-    char name[8];
+    union {
+        uint64_t uval;
+        char name[8];
+    };
     bool operator<(const Ticker& rhs) const {
-        return std::memcmp(name, rhs.name, sizeof(name)) < 0;
+        return uval < rhs.uval;
     }
     bool operator==(const Ticker& rhs) const {
-        return std::memcmp(name, rhs.name, sizeof(name)) == 0;
+        return uval == rhs.uval;
     }
     Ticker& operator=(const std::string& rhs) {
         memset(name, 0, sizeof(name));
@@ -46,8 +53,7 @@ struct Ticker {
     }
     Ticker& operator=(const Ticker& rhs) {
         if (&rhs != this) {
-            memset(name, 0, sizeof(name));
-            std::memcpy(name, rhs.name, sizeof(name));
+            uval = rhs.uval;
         }
         return *this;
     }
@@ -56,62 +62,70 @@ struct Ticker {
     }
 };
 
+// Implements std::hash for the Ticker object so it can be used
+// as key in STL containers
 template <>
 struct std::hash<Ticker> {
     std::size_t operator()(Ticker const& s) const noexcept {
-        const uint64_t* ptr = reinterpret_cast<const uint64_t*>(s.name);
-        return h(*ptr);
+        return h(s.uval);
     }
     std::hash<uint64_t> h;
 };
 
+// Ticker statistics as from file plus our internal index
 struct TickerInfo {
     uint32_t index;
     Ticker ticker;
     uint64_t volume;
 };
 
-struct Event {
-    Ticker ticker;
-    uint64_t time;
-    uint32_t count;
-};
-
-using EventVec = std::vector<Event>;
-using TickerVec = std::vector<TickerInfo>;
-
-template <template <typename Key, typename... Value> class MapType>
-void testme(const std::string& key, Snapshot& snap, const TickerVec& tickers,
-            uint32_t numevents, uint32_t numtickers, double runsecs) {
+// The actual test run, templated by map type
+template <class MapType>
+void testme(const std::string& key, Snapshot& snap,
+            const std::vector<TickerInfo>& tickers, uint32_t numevents,
+            uint32_t numtickers, double runsecs) {
     // Initialize the entire map
-    MapType<Ticker, OrderBook> bookmap{};
+    MapType bookmap;
     for (uint32_t j = 0; j < numtickers; ++j) {
-        bookmap[tickers[j].ticker].count = 0;
+        Ticker t = tickers[j].ticker;
+        bookmap[t].count = 0;
     }
 
-    // Run searching
+    // Create a vector of tickers to look up, simulating arriving packets
+    struct Packet {
+        Ticker ticker;
+        char dummy[8];
+    };
     boost::random::mt19937 rng;
     boost::random::uniform_int_distribution<> chance(0, numtickers - 1);
+    std::vector<Packet> packets(numevents);
+    for (uint32_t j = 0; j < numevents; ++j) {
+        uint32_t idx = chance(rng);
+        packets[j].ticker = tickers[idx].ticker;
+    }
+
+    // Loop measuring lookups
+    double start = now();
     snap.start();
     uint64_t counter = 0;
-    double start = now();
     do {
-        for (uint32_t j = 0; j < numevents; ++j) {
-            uint32_t idx = chance(rng);
-            OrderBook& book(bookmap[tickers[idx].ticker]);
+        for (const Packet& packet : packets) {
+            OrderBook& book(bookmap[packet.ticker]);
             book.count += 1;
             counter++;
         }
     } while (now() < start + runsecs);
     snap.stop(key, numtickers, counter);
 
-    // Check the counter
+    // The sum of all counters has to match
     for (auto& ev : bookmap) {
         counter -= ev.second.count;
     }
     assert(counter == 0);
 }
 
+// Dearly missing split function from the STL
+// I should have it as string_view instead but it's not ubiquitous yet
 bool split(const std::string& str, char separator, std::string& first,
            std::string& second) {
     std::string::size_type p1 = str.find_first_of(separator);
@@ -129,6 +143,7 @@ bool split(const std::string& str, char separator, std::string& first,
     return true;
 }
 
+// Functional style code to read the tickers
 template <typename Fn>
 void getTickers(const std::string& filename, Fn fn) {
     std::cout << "Opening file " << filename << std::endl;
@@ -137,10 +152,8 @@ void getTickers(const std::string& filename, Fn fn) {
         try {
             std::string line;
             std::getline(ifs, line, '\n');
-            // std::cout << line << std::endl;
             std::string ticker, svolume;
             if (split(line, ',', ticker, svolume)) {
-                // std::cout << "    " << ticker << ", " << svolume << std::endl;
                 uint64_t volume = std::stol(svolume);
                 fn(ticker, volume);
             }
@@ -149,9 +162,39 @@ void getTickers(const std::string& filename, Fn fn) {
     }
 }
 
+// All our containers, templated by allocator type
+template <class Allocator>
+using BoostFlatMapType =
+    boost::container::flat_map<Ticker, OrderBook, std::less<Ticker>, Allocator>;
+template <class Allocator>
+using StdMapType = std::map<Ticker, OrderBook, std::less<Ticker>, Allocator>;
+template <class Allocator>
+using StdHashMapType = std::unordered_map<Ticker, OrderBook, std::hash<Ticker>,
+                                          std::equal_to<Ticker>, Allocator>;
+
+// All ou allocators
+using stdalloc = std::allocator<std::pair<Ticker, OrderBook>>;
+using wrapped = retail_allocator<std::pair<Ticker, OrderBook>, standard_allocator>;
+using mmaped = retail_allocator<std::pair<Ticker, OrderBook>, mmap_allocator>;
+using transp = retail_allocator<std::pair<Ticker, OrderBook>, transparent_allocator>;
+using hugepage = retail_allocator<std::pair<Ticker, OrderBook>, hugepage_allocator>;
+using boostpmr = BoostAllocator<std::pair<const Ticker, OrderBook>>;
+
 int main(int argc, char* argv[]) {
+    // Print usage if necessary
+    if (argc < 2) {
+        std::cerr << "Usage: " << argv[0] << " <tickerfile>" << std::endl;
+        std::cerr << "Example:\n\t" << argv[0] << " Bats_Volume_2016-05-03.csv"
+                  << std::endl;
+        return 0;
+    }
+
+    // Get file name from user
+    std::string filename = argv[1];
+
+    // Read all tickers from file into a vector
     double totalvolume = 0;
-    TickerVec tickers;
+    std::vector<TickerInfo> tickers;
     auto tickproc = [&tickers, &totalvolume](const std::string& ticker, uint64_t volume) {
         uint32_t index = tickers.size();
         TickerInfo tk;
@@ -161,7 +204,7 @@ int main(int argc, char* argv[]) {
         totalvolume += volume;
         tickers.push_back(tk);
     };
-    getTickers("Bats_Volume_2016-05-03.csv", tickproc);
+    getTickers(filename, tickproc);
     if (tickers.empty()) {
         std::cerr << "Could not read tickers file" << std::endl;
         return 1;
@@ -174,18 +217,54 @@ int main(int argc, char* argv[]) {
                   return lhs.volume > rhs.volume;
               });
 
-    const size_t numevents = 2000;
+    const size_t numevents = 500;
     const double runsecs = 0.5;
-    Snapshot snap(1);
-    for (uint32_t numtickers = 400; numtickers < 6500; numtickers += 200) {
-        std::cout << "Tickers:" << numtickers << std::endl;
-        testme<boost::container::flat_map>("boost::flat_map", snap, tickers, numevents,
-                                           numtickers, runsecs);
-        testme<std::map>("std::map", snap, tickers, numevents, numtickers, runsecs);
-        testme<std::unordered_map>("std::unordered_map", snap, tickers, numevents,
-                                   numtickers, runsecs);
-    }
-    snap.summary("Map");
 
-    return 0;
+    Snapshot snap(1);
+    for (uint32_t numtickers = 500; numtickers < 6500; numtickers += 500) {
+        testme<StdMapType<stdalloc>>("std::map<std::alloc>", snap, tickers, numevents,
+                                     numtickers, runsecs);
+        testme<StdMapType<wrapped>>("std::map<wrap::std>", snap, tickers, numevents,
+                                    numtickers, runsecs);
+        testme<StdMapType<mmaped>>("std::map<wrap::mmap>", snap, tickers, numevents,
+                                   numtickers, runsecs);
+        testme<StdMapType<transp>>("std::map<wrap::thp>", snap, tickers, numevents,
+                                   numtickers, runsecs);
+        testme<StdMapType<hugepage>>("std::map<wrap::huge>", snap, tickers, numevents,
+                                     numtickers, runsecs);
+        testme<StdMapType<boostpmr>>("std::map<boostpmr>", snap, tickers, numevents,
+                                     numtickers, runsecs);
+        testme<boost::container::flat_map<Ticker, OrderBook>>(
+            "boost::flat_map<std::alloc>", snap, tickers, numevents, numtickers, runsecs);
+
+        testme<BoostFlatMapType<stdalloc>>("boost::flat_map<std::alloc>", snap, tickers,
+                                           numevents, numtickers, runsecs);
+        testme<BoostFlatMapType<wrapped>>("boost::flat_map<wrap::std>", snap, tickers,
+                                          numevents, numtickers, runsecs);
+        testme<BoostFlatMapType<mmaped>>("boost::flat_map<wrap::mmap>", snap, tickers,
+                                         numevents, numtickers, runsecs);
+        testme<BoostFlatMapType<transp>>("boost::flat_map<wrap::thp>", snap, tickers,
+                                         numevents, numtickers, runsecs);
+        testme<BoostFlatMapType<hugepage>>("boost::flat_map<wrap::huge>", snap, tickers,
+                                           numevents, numtickers, runsecs);
+        testme<BoostFlatMapType<boostpmr>>("boost::flat_map<boostpmr>", snap, tickers,
+                                           numevents, numtickers, runsecs);
+
+        testme<StdHashMapType<stdalloc>>("std::unordered_map<std::alloc>", snap, tickers,
+                                         numevents, numtickers, runsecs);
+        testme<StdHashMapType<wrapped>>("std::unordered_map<wrap::std>", snap, tickers,
+                                        numevents, numtickers, runsecs);
+        testme<StdHashMapType<mmaped>>("std::unordered_map<wrap::mmap>", snap, tickers,
+                                       numevents, numtickers, runsecs);
+        testme<StdHashMapType<transp>>("std::unordered_map<wrap::thp>", snap, tickers,
+                                       numevents, numtickers, runsecs);
+        testme<StdHashMapType<hugepage>>("std::unordered_map<wrap::huge>", snap, tickers,
+
+                                         numevents, numtickers, runsecs);
+        testme<StdHashMapType<boostpmr>>("std::unordered_map<boostpmr>", snap, tickers,
+                                         numevents, numtickers, runsecs);
+    }
+
+    // Print summary
+    snap.summary("Map");
 }

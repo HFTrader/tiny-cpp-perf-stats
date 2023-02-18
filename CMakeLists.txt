@@ -6,9 +6,11 @@ project( tiny-perf-stats )
 cmake_minimum_required( VERSION 3.2 )
 include( FindPkgConfig )
 
-find_package( Boost REQUIRED )
+set( CMAKE_CXX_STANDARD 17 )
+
+find_package( Boost COMPONENTS container REQUIRED )
 find_package( Armadillo REQUIRED )
-#find_package( LAPACK REQUIRED )
+
 pkg_check_modules( CairoMM cairomm-1.0 cairomm-png-1.0 cairomm-svg-1.0 )
 set( REQUIRED_LIBS rt ${ARMADILLO_LIBRARY} ${LAPACK_LIBRARY} arpack )
 include_directories( ${ARMADILLO_INCLUDE_DIR} )
@@ -19,8 +21,7 @@ if ( CairoMM_FOUND )
 endif()
 
 if ( UNIX )
-
-add_definitions( -std=c++11 -march=native )
+add_compile_options( -std=c++11 -march=native )
 
 add_library( tinyperfstats STATIC Snapshot.cpp PerfCounter.cpp )
 target_link_libraries( tinyperfstats armadillo )
@@ -35,13 +36,15 @@ add_executable( testMemoryMap testMemoryMap.cpp MMapFile.cpp )
 target_link_libraries( testMemoryMap tinyperfstats ${REQUIRED_LIBS} )
 
 add_executable( testCacheVec  testCacheVec.cpp )
-target_link_libraries( testCacheVec tinyperfstats ${REQUIRED_LIBS} )
+target_link_libraries( testCacheVec tinyperfstats ${REQUIRED_LIBS} Boost::container )
 
 add_executable( testMicroStats testMicroStats.cpp )
 target_link_libraries( testMicroStats ${REQUIRED_LIBS} )
 
 add_executable( testCacheSize testCacheSize.cpp )
 target_link_libraries( testCacheSize ${REQUIRED_LIBS} )
+
+add_executable( testBits testBits.cpp )
 
 add_library( DuffLoopHelpers DuffLoopHelpers.cpp )
 add_executable( testDuffLoop testDuffLoop.cpp )

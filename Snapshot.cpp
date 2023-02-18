@@ -36,65 +36,6 @@ struct TinyString {
     }
 };
 
-TinyString<32> human(double value, int size) {
-    TinyString<32> str;
-    snprintf(str.buffer, sizeof(str), "%g", value);
-    return str;
-}
-
-std::string human2(double value, int size) {
-    if (value == 0) return "0";
-    int width = size;
-    int precision = 0;
-    const char *neg = "";
-    const char *prefix = "";
-    const char *suffix = "";
-    if (value < 0) {
-        neg = "-";
-        value = -value;
-    }
-    double vlog = log(abs(value)) / log(10);
-    int ilog = lrint(floor(vlog));
-    if (ilog >= 0) {
-        if (ilog < 3) {
-            precision = size - ilog;
-        } else if (ilog < 6) {
-            value = value / 1E3;
-            suffix = "k";
-        } else if (ilog < 9) {
-            value = value / 1E6;
-            suffix = "M";
-        } else if (ilog < 12) {
-            value = value / 1E9;
-            suffix = "G";
-        } else {
-            value = value / 1E12;
-            suffix = "T";
-        }
-    } else {
-        if (value < 0) {
-            value = -value;
-            prefix = "-";
-        }
-        if (ilog > -3) {
-            value = value * 1000;
-            suffix = "m";
-        } else if (ilog > -6) {
-            value = value * 1E6;
-            suffix = "u";
-        } else if (ilog > -9) {
-            value = value * 1E9;
-            suffix = "n";
-        } else {
-            value = value * 1E12;
-            suffix = "p";
-        }
-    }
-    char str[256];
-    ::snprintf(str, sizeof(str), "%s%s%.*f%s", neg, prefix, precision, value, suffix);
-    return str;
-}
-
 Snapshot::Sample Snapshot::stop(const std::string &evname, uint64_t numitems,
                                 uint64_t numiterations) {
     Sample samp;
@@ -107,13 +48,13 @@ Snapshot::Sample Snapshot::stop(const std::string &evname, uint64_t numitems,
         samp.tlbmisses = double(tlbmisses.stop()) / numiterations;
         samples[evname].push_back(samp);
     }
-    if (debug >= 2)
-        std::cout << "Statistics: " << numitems << " items, " << numiterations
-                  << " iterations. Per item:" << human(samp.cycles, 3) << " cycles, "
-                  << human(samp.instructions, 3) << " instructions, "
-                  << human(samp.cachemisses, 3) << " cache misses, "
-                  << human(samp.branchmisses, 3) << " branch misses, "
-                  << human(samp.tlbmisses, 3) << " TLB misses\n";
+    if (debug >= 1)
+        printf(
+            "%-38s %4ld items, %8ld iter, %6.2f cycles, %6.2f instr, %6.2f cache, %6.2f "
+            "branch, %6.2f tlbs\n",
+            evname.c_str(), numitems, numiterations, samp.cycles, samp.instructions,
+            samp.cachemisses, samp.branchmisses, samp.tlbmisses);
+    fflush(stdout);
 
     return samp;
 }
@@ -256,6 +197,9 @@ void Snapshot::summary(const std::string &header, FILE *f) {
         double sumtlbs = 0;
         arma::mat C(numpoints, metrics.size());
         arma::vec b(numpoints);
+        if (debug > 0) {
+            fprintf(f, "Sample Items Cycles Cache Instr Branch TLB\n");
+        }
         for (unsigned j = 0; j < numpoints; ++j) {
             const Sample &sm(svec[j]);
             for (unsigned k = 0; k < metrics.size(); ++k) {
@@ -266,6 +210,11 @@ void Snapshot::summary(const std::string &header, FILE *f) {
             sumcycles += double(sm.cycles);
             sumbranches += double(sm.branchmisses);
             sumtlbs += double(sm.tlbmisses);
+            if (debug > 0) {
+                fprintf(f, "%2d %5ld %3.1f %3.1f %3.1f %3.1f %3.1f\n", j, sm.numitems,
+                        sm.cycles, sm.cachemisses, sm.instructions, sm.branchmisses,
+                        sm.tlbmisses);
+            }
         }
         double cycinstr = suminstr > 0 ? sumcycles / suminstr : -1;
         double cycbranch = sumbranches > 0 ? sumcycles / sumbranches : -1;
@@ -294,8 +243,7 @@ void Snapshot::summary(const std::string &header, FILE *f) {
 
             RegResults reg;
             if (calcModel(modelnum, C, b, reg)) {
-                // if (reg.pval.max() > 0.05)
-                //    continue;
+                if (reg.pval.max() > 0.05) continue;
 
                 if ((not found) or (reg.aic < bestreg.aic)) {
                     bestreg = reg;

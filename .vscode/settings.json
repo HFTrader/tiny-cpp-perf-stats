@@ -64,6 +64,20 @@
         "__split_buffer": "cpp",
         "__threading_support": "cpp",
         "__tree": "cpp",
-        "__tuple": "cpp"
+        "__tuple": "cpp",
+        "version": "cpp",
+        "atomic": "cpp",
+        "bitset": "cpp",
+        "variant": "cpp",
+        "__hash_table": "cpp",
+        "__locale": "cpp",
+        "__string": "cpp",
+        "ios": "cpp",
+        "locale": "cpp",
+        "complex": "cpp",
+        "fstream": "cpp",
+        "iomanip": "cpp",
+        "shared_mutex": "cpp",
+        "sstream": "cpp"
     }
 }
