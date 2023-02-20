@@ -36,14 +36,14 @@ endif()
 ###########################################################################
 
 add_subdirectory( libs )
-
 include_directories( libs )
+
 add_subdirectory( apps )
 
 install( TARGETS
   tinyperfstats
   scheduler_lib  testScheduler
-  testMemoryMap testCacheVec
+  testMemoryMap testTickerLookup testWordMap 
   testMicroStats testCacheSize
   testDuffLoop 
   ARCHIVE DESTINATION lib LIBRARY DESTINATION lib RUNTIME DESTINATION bin )

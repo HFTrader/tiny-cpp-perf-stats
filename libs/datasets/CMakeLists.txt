@@ -1,0 +1,1 @@
+add_library( datasets STATIC bats.cpp bible.cpp )
