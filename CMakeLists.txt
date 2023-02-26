@@ -1,3 +1,5 @@
+cmake_minimum_required( VERSION 3.13 )
+
 ###########################################################################
 # Pre-project settings
 ###########################################################################
@@ -5,19 +7,18 @@
 if ( NOT CMAKE_BUILD_TYPE )
   set( CMAKE_BUILD_TYPE "Release" CACHE STRING "Build type: release, debug, relwithdebinfo" FORCE )
 endif()
+set( TINYPERF_BUILD_TESTS ON CACHE BOOL "Builds tests" )
 
 ###########################################################################
 # Project start
 ###########################################################################
-
 project( tiny-perf-stats )
-cmake_minimum_required( VERSION 3.13 )
 include( FindPkgConfig )
 
 set( CMAKE_CXX_STANDARD 17 )
 
 ###########################################################################
-# Dependencies 
+# Dependencies
 ###########################################################################
 
 find_package( Boost COMPONENTS container REQUIRED )
@@ -38,12 +39,18 @@ endif()
 add_subdirectory( libs )
 include_directories( libs )
 
-add_subdirectory( apps )
+set( TARGETS  tinyperfstats )
 
-install( TARGETS
-  tinyperfstats
-  scheduler_lib  testScheduler
-  testMemoryMap testTickerLookup testWordMap 
-  testMicroStats testCacheSize
-  testDuffLoop 
-  ARCHIVE DESTINATION lib LIBRARY DESTINATION lib RUNTIME DESTINATION bin )
+if ( TINYPERF_BUILD_TESTS )
+  add_subdirectory( apps )
+  list( APPEND TARGETS
+    scheduler_lib  testScheduler
+    testMemoryMap testTickerLookup testWordMap
+    testMicroStats testCacheSize
+    testDuffLoop )
+endif()
+
+install( TARGETS ${TARGETS}
+         ARCHIVE DESTINATION lib
+         LIBRARY DESTINATION lib
+         RUNTIME DESTINATION bin )
