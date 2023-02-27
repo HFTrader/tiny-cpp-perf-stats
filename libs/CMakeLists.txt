@@ -9,6 +9,7 @@ endforeach()
 
 message( "Headers:  ${ALLHEADERS}" )
 
+target_include_directories( tinyperfstats PUBLIC ${CURRENT_CMAKE_SOURCE_DIR} )
 set_target_properties( tinyperfstats
   PROPERTIES PUBLIC_HEADER "${ALLHEADERS}"
 )
