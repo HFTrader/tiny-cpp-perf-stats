@@ -1,6 +1,6 @@
 add_library( tinyperfstats STATIC Snapshot.cpp PerfCounter.cpp )
 target_link_libraries( tinyperfstats armadillo )
-target_include_directories( tinyperfstats PUBLIC include )
+target_include_directories( tinyperfstats PUBLIC . )
 
 set( HEADER_LIST Allocators.h BitUtils.h DateUtils.h Histogram.h KahanSum.h MicroStats.h PerfCounter.h Snapshot.h StringUtils.h Ticker.h TimingHelpers.h )
 foreach( HEADER ${HEADER_LIST} )
