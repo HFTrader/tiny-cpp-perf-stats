@@ -1,5 +1,6 @@
 add_library( tinyperfstats STATIC Snapshot.cpp PerfCounter.cpp )
 target_link_libraries( tinyperfstats armadillo )
+target_include_directories( tinyperfstats PUBLIC include )
 
 set( HEADER_LIST Allocators.h BitUtils.h DateUtils.h Histogram.h KahanSum.h MicroStats.h PerfCounter.h Snapshot.h StringUtils.h Ticker.h TimingHelpers.h )
 foreach( HEADER ${HEADER_LIST} )
@@ -9,10 +10,7 @@ endforeach()
 
 message( "Headers:  ${ALLHEADERS}" )
 
-target_include_directories( tinyperfstats PUBLIC ${CURRENT_CMAKE_SOURCE_DIR} )
-set_target_properties( tinyperfstats
-  PROPERTIES PUBLIC_HEADER "${ALLHEADERS}"
-)
+
 
 if ( TINYPERF_BUILD_TESTS )
   add_subdirectory( datasets )
