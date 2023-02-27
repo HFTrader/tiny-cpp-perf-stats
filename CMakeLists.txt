@@ -53,4 +53,5 @@ endif()
 install( TARGETS ${TARGETS}
          ARCHIVE DESTINATION lib
          LIBRARY DESTINATION lib
-         RUNTIME DESTINATION bin )
+         RUNTIME DESTINATION bin
+         PUBLIC_HEADER DESTINATION include )
