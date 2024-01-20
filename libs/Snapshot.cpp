@@ -1,70 +1,53 @@
 #include "Snapshot.h"
-#include <linux/perf_event.h>
+#include "Counter.h"
+#include "Product.h"
+#include "IndexedMap.h"
 #define ARMA_DONT_PRINT_ERRORS
 #include <armadillo>
 #include <set>
 #include <boost/math/distributions.hpp>
 
-Snapshot::Snapshot(int debuglevel)
-    : cycles(PERF_TYPE_HARDWARE, PERF_COUNT_HW_CPU_CYCLES),
-      instructions(PERF_TYPE_HARDWARE, PERF_COUNT_HW_INSTRUCTIONS),
-      cachemisses(PERF_TYPE_HARDWARE, PERF_COUNT_HW_CACHE_MISSES),
-      branchmisses(PERF_TYPE_HARDWARE, PERF_COUNT_HW_BRANCH_MISSES),
-      tlbmisses(PERF_TYPE_HW_CACHE, PERF_COUNT_HW_CACHE_DTLB |
-                                        PERF_COUNT_HW_CACHE_OP_READ << 8 |
-                                        PERF_COUNT_HW_CACHE_RESULT_MISS << 16),
-      debug(debuglevel) {
+Snapshot::Snapshot(const std::vector<std::string> &pmc) {
+    if (!counters.init(pmc)) {
+        std::cerr << "Unable to initialize performance counters group" << '\n';
+    }
+    debug = 0;
+}
+
+Snapshot::Snapshot() {
+    std::vector<std::string> counter_names{"cycles", "instructions", "cache-misses",
+                                           "branch-misses"};
+    if (!counters.init(counter_names)) {
+        std::cerr << "Unable to initialize performance counters group" << '\n';
+    }
+    debug = 0;
 }
 
 Snapshot::~Snapshot() {
 }
 
 void Snapshot::start() {
-    cycles.start();
-    instructions.start();
-    cachemisses.start();
-    branchmisses.start();
-    tlbmisses.start();
+    counters.start();
 }
 
-template <size_t N>
-struct TinyString {
-    char buffer[N];
-    friend std::ostream &operator<<(std::ostream &out, const TinyString<N> &res) {
-        out << res.buffer;
-        return out;
-    }
-};
-
-Snapshot::Sample Snapshot::stop(const std::string &evname, uint64_t numitems,
+Snapshot::Sample Snapshot::stop(const std::string &event_name, uint64_t numitems,
                                 uint64_t numiterations) {
+    auto [it, inserted] = events.insert({event_name, events.size()});
+    int eventid = it->second;
+    counters.stop();
     Sample samp;
     if (numiterations > 0) {
-        samp.numitems = numitems;
-        samp.cycles = double(cycles.stop()) / numiterations;
-        samp.instructions = double(instructions.stop()) / numiterations;
-        samp.cachemisses = double(cachemisses.stop()) / numiterations;
-        samp.branchmisses = double(branchmisses.stop()) / numiterations;
-        samp.tlbmisses = double(tlbmisses.stop()) / numiterations;
-        samples[evname].push_back(samp);
+        samp.push_back({"Constant", (double)1, 0, false});
+        samp.push_back({"N", (double)numitems, 1, false});
+        samp.push_back({"N2", double(numitems) * double(numitems), 1, false});
+        samp.push_back({"log(N)", (double)log(numitems) / log(10), 1, false});
+        for (size_t j = 0; j < counters.size(); ++j) {
+            double value = double(counters[j]) / numiterations;
+            samp.push_back({counters.name(j), value, int(2 + j), false});
+        }
+        samples[event_name].push_back(samp);
     }
-    if (debug >= 1)
-        printf(
-            "%-38s %4ld items, %8ld iter, %6.2f cycles, %6.2f instr, %6.2f cache, %6.2f "
-            "branch, %6.2f tlbs\n",
-            evname.c_str(), numitems, numiterations, samp.cycles, samp.instructions,
-            samp.cachemisses, samp.branchmisses, samp.tlbmisses);
-    fflush(stdout);
-
     return samp;
-}
-
-static std::vector<uint32_t> calcMask(uint32_t num) {
-    std::vector<uint32_t> ixvec;
-    for (unsigned j = 0; num > 0; ++j, num >>= 1) {
-        if ((num & 1) != 0) ixvec.push_back(j);
-    }
-    return ixvec;
 }
 
 // I should really spawn this into a LinearModel class
@@ -89,15 +72,14 @@ struct RegResults {
     bool solve();
 };
 
-static bool calcModel(uint32_t modelnum, const arma::mat &C, const arma::vec &b,
-                      RegResults &reg) {
-    auto ixvec = calcMask(modelnum);
-    uint32_t numcols = ixvec.size();
+static bool calcModel(const std::vector<uint32_t> &model, const arma::mat &C,
+                      const arma::vec &b, RegResults &reg) {
+    uint32_t numcols = model.size();
     uint32_t numrows = C.n_rows;
     reg.b = b;
     reg.C.resize(numrows, numcols);
     for (uint32_t j = 0; j < numcols; ++j) {
-        reg.C.col(j) = C.col(ixvec[j]);
+        reg.C.col(j) = C.col(model[j]);
     }
     return reg.solve();
 }
@@ -147,7 +129,7 @@ bool RegResults::solve() {
 
         // R-squared measures
         rsq = 1 - arma::dot(res, res) / arma::dot(b, b);
-        rsqadj = 1 - (1 - rsq) * ((nobs - 1) / (nobs - ncoef));
+        rsqadj = 1 - (1 - rsq) * (double(nobs - 1) / (nobs - ncoef));
 
         // Compute F-value and respective probability for model selection
         fval = (rsq / (ncoef - 1)) / ((1 - rsq) / ndof);
@@ -167,136 +149,139 @@ bool RegResults::solve() {
 }
 
 void Snapshot::summary(const std::string &header, FILE *f) {
-    using MetricFn = std::function<double(const Sample &)>;
-    struct Metric {
+    struct Variable {
+        int id = -1;
         int group;
         std::string name;
-        MetricFn calc;
     };
-    static const std::vector<Metric> metrics = {
-        {1, "Constant", [](const Sample &s) { return 1; }},
-        {2, "CacheMisses", [](const Sample &s) { return s.cachemisses; }},
-        {3, "BranchMisses", [](const Sample &s) { return s.branchmisses; }},
-        {4, "TLBMisses", [](const Sample &s) { return s.tlbmisses; }},
-        {5, "Log(N)", [](const Sample &s) { return log(s.numitems) / log(10); }},
-        {5, "N", [](const Sample &s) { return s.numitems; }},
-        {5, "N*Log(N)",
-         [](const Sample &s) { return s.numitems * log(s.numitems) / log(10); }},
-        {5, "N^2", [](const Sample &s) { return s.numitems * s.numitems; }}};
+    struct Group {
+        int id = -1;
+        std::vector<int> vars;
+    };
+    // cycle through events map assigning groups and counting total samples to build
+    // the stats matrix
+    std::string dependent_name = "cycles";
+    std::map<std::string, Variable> varmap;
+    using GroupKey = std::pair<std::string, int>;
+    hb::IndexedMap<GroupKey, Group> groups;
+    std::vector<Variable> vars;
+    size_t numsamples = 0;
+    for (auto &ism : samples) {
+        numsamples += ism.second.size();
+        std::string event_name = ism.first;
+        for (Sample &sample : ism.second) {
+            for (Metric &metric : sample) {
+                // Skip the dependent variable
+                if (metric.name == dependent_name) {
+                    continue;
+                }
 
-    // cycle through events map
+                // Get or create a group for this key
+                Group &group(groups[{event_name, metric.group}]);
+                if (group.id < 0) {
+                    group.id = groups.size() - 1;
+                }
+
+                // Recreate the key for this metric - global metric if necessary
+                std::string key = (metric.global ? "" : event_name + ":") + metric.name;
+                Variable &var(varmap[key]);
+                if (var.id < 0) {
+                    var.id = varmap.size() - 1;
+                    var.name = key;
+                    vars.push_back({var.id, group.id, key});
+                    group.vars.push_back(var.id);
+                }
+                var.group = group.id;
+            }
+        }
+    }
+
+    // Build the stats matrix
+    size_t numvars = vars.size();
+    size_t numgroups = groups.size();
+    arma::mat C(numsamples, numvars);
+    arma::vec b(numsamples);
+
+    // Count variables
+    std::vector<uint32_t> group_counts(numgroups);
+    for (uint32_t j = 0; j < numgroups; ++j) group_counts[j] = 0;
+    for (const Group &group : groups) {
+        group_counts[group.id] = group.vars.size();
+    }
+
+    // cycle through all samples, filling up the matrix
+    size_t row = 0;
     for (const auto &ism : samples) {
-        std::string evname = ism.first;
-        const std::vector<Sample> &svec(ism.second);
-
-        // fill in data matrix with all points collected
-        uint32_t numpoints = svec.size();
-        double suminstr = 0;
-        double sumbranches = 0;
-        double sumcycles = 0;
-        double sumtlbs = 0;
-        arma::mat C(numpoints, metrics.size());
-        arma::vec b(numpoints);
+        std::string event_name = ism.first;
         if (debug > 0) {
             fprintf(f, "Sample Items Cycles Cache Instr Branch TLB\n");
         }
-        for (unsigned j = 0; j < numpoints; ++j) {
-            const Sample &sm(svec[j]);
-            for (unsigned k = 0; k < metrics.size(); ++k) {
-                C(j, k) = metrics[k].calc(sm);
-            }
-            b(j) = double(sm.cycles);
-            suminstr += double(sm.instructions);
-            sumcycles += double(sm.cycles);
-            sumbranches += double(sm.branchmisses);
-            sumtlbs += double(sm.tlbmisses);
-            if (debug > 0) {
-                fprintf(f, "%2d %5ld %3.1f %3.1f %3.1f %3.1f %3.1f\n", j, sm.numitems,
-                        sm.cycles, sm.cachemisses, sm.instructions, sm.branchmisses,
-                        sm.tlbmisses);
-            }
-        }
-        double cycinstr = suminstr > 0 ? sumcycles / suminstr : -1;
-        double cycbranch = sumbranches > 0 ? sumcycles / sumbranches : -1;
+        for (const Sample &sample : ism.second) {
+            for (const Metric &metric : sample) {
+                if (metric.name == dependent_name) {
+                    b(row) = metric.value;
+                } else {
+                    std::string key =
+                        (metric.global ? "" : event_name + ":") + metric.name;
+                    Variable &var(varmap[key]);
 
-        RegResults bestreg;
-        bool found = false;
-        uint32_t bestmodel = 0;
-        uint32_t nummodels = 1 << (metrics.size() - 1);
-
-        // This is actually dumb - we generate all models and then filter
-        // The right thing would be to do a product generator but we lazy
-        for (uint32_t modelnum = 1; modelnum < nummodels; modelnum++) {
-            // Filter out if a group is repeated
-            auto mask = calcMask(modelnum);
-            std::set<int> groups;
-            bool duplicate = false;
-            for (int model : mask) {
-                int group = metrics[model].group;
-                if (groups.find(group) != groups.end()) {
-                    duplicate = true;
-                    break;
-                }
-                groups.insert(group);
-            }
-            if (duplicate) continue;
-
-            RegResults reg;
-            if (calcModel(modelnum, C, b, reg)) {
-                if (reg.pval.max() > 0.05) continue;
-
-                if ((not found) or (reg.aic < bestreg.aic)) {
-                    bestreg = reg;
-                    bestmodel = modelnum;
-                    found = true;
-                }
-
-                if (debug > 1) {
-                    fprintf(f,
-                            "%s, Event:%s, Cyc/Ins:%3.2f Cyc/Bch:%3.2f Points:%d "
-                            "Rsq:%5.2f F:%f LL:%f aic:%f bic:%f \n",
-                            header.c_str(), evname.c_str(), cycinstr, cycbranch,
-                            numpoints, reg.rsq, reg.fpval, reg.loglik, reg.aic, reg.bic);
-
-                    for (unsigned j = 0; j < mask.size(); ++j) {
-                        fprintf(f, "   Term: %-12s  p:%7.5f coef:%g\n",
-                                metrics[mask[j]].name.c_str(), reg.pval(j), reg.sol(j));
+                    if (var.id >= 0) {
+                        C(row, var.id) = metric.value;
+                    } else {
+                        std::cerr << "This should never happen!"
+                                  << "\n";
                     }
                 }
             }
+            row++;
         }
+    }
 
-        if (not found) {
-            fprintf(f, "    Model did not converge\n");
-        } else {
-            fprintf(f,
-                    "\n========== Best Model\n%s, Event:%s, Cyc/Ins:%3.2f Cyc/Bch:%3.2f "
-                    "Points:%d Rsq:%5.2f F:%f LL:%f aic:%f bic:%f \n",
-                    header.c_str(), evname.c_str(), cycinstr, cycbranch, numpoints,
-                    bestreg.rsq, bestreg.fpval, bestreg.loglik, bestreg.aic, bestreg.bic);
+    // Now generate all possible combinations of models
+    RegResults bestreg;
+    bool found = false;
+    std::vector<uint32_t> bestmodel;
 
-            auto mask = calcMask(bestmodel);
-            for (unsigned j = 0; j < mask.size(); ++j) {
-                fprintf(f, "   Term: %-12s  p:%7.5f coef:%g\n",
-                        metrics[mask[j]].name.c_str(), bestreg.pval(j), bestreg.sol(j));
+    Product<uint32_t> indices(group_counts);
+    while (indices.next()) {
+        std::cout << "New combination: " << '\n';
+        std::vector<uint32_t> model(numgroups);
+        for (int ng = 0; ng < numgroups; ++ng) {
+            int index = indices[ng];
+            int var_index = groups[ng].vars[index];
+            model[ng] = var_index;
+            std::cout << "    " << vars[var_index].name << '\n';
+        }
+        RegResults reg;
+        if (calcModel(model, C, b, reg)) {
+            // if (reg.pval.max() > 0.05) continue;
+
+            if ((not found) or (reg.aic < bestreg.aic)) {
+                bestreg = reg;
+                bestmodel = model;
+                found = true;
             }
-            if (debug > 0) {
-                for (unsigned j = 0; j < mask.size(); ++j) {
-                    fprintf(f, "%s ", metrics[mask[j]].name.c_str());
-                }
-                fprintf(f, "\n");
-                for (unsigned j = 0; j < numpoints; ++j) {
-                    const Sample &sm(svec[j]);
-                    double sum = 0;
-                    for (unsigned j = 0; j < mask.size(); ++j) {
-                        double value = metrics[mask[j]].calc(sm);
-                        double partial = value * bestreg.sol(j);
-                        fprintf(f, "%f ", partial);
-                        sum += partial;
-                    }
-                    fprintf(f, " = %f  expected %f\n", sum, double(sm.cycles));
-                }
+        }
+    }
+
+    if (not found) {
+        fprintf(f, "    Model did not converge or not enough points\n");
+    } else {
+        fprintf(f,
+                "\n========== Best Model\n%s, "
+                " Rsq:%5.2f F:%f LL:%f aic:%f bic:%f \n",
+                header.c_str(), bestreg.rsq, bestreg.fpval, bestreg.loglik, bestreg.aic,
+                bestreg.bic);
+
+        for (unsigned j = 0; j < bestmodel.size(); ++j) {
+            fprintf(f, "   Term: %-12s  p:%7.5f coef:%g\n",
+                    vars[bestmodel[j]].name.c_str(), bestreg.pval(j), bestreg.sol(j));
+        }
+        if (debug > 0) {
+            for (unsigned j = 0; j < bestmodel.size(); ++j) {
+                fprintf(f, "%s ", vars[bestmodel[j]].name.c_str());
             }
+            fprintf(f, "\n");
         }
     }
 }

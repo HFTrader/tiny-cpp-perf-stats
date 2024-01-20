@@ -118,7 +118,7 @@ int main(int argc, char* argv[]) {
         return true;
     });
     if (tickers.empty()) {
-        std::cerr << "Could not read tickers file" << std::endl;
+        std::cerr << "Could not read tickers file" << '\n';
         return 1;
     }
 
@@ -131,9 +131,11 @@ int main(int argc, char* argv[]) {
 
     const size_t numevents = 500;
     const double runsecs = 0.5;
-
-    Snapshot snap(1);
+    std::vector<std::string> counter_names{"cycles", "instructions", "cache-misses",
+                                           "branch-misses"};
+    Snapshot snap(counter_names);
     for (uint32_t numtickers = 500; numtickers < 6500; numtickers += 500) {
+        std::cout << "Tickers:" << numtickers << '\n';
         testme<StdMapType<stdalloc>>("std::map<std::alloc>", snap, tickers, numevents,
                                      numtickers, runsecs);
         testme<StdMapType<wrapped>>("std::map<wrap::std>", snap, tickers, numevents,

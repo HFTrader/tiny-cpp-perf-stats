@@ -13,22 +13,7 @@
 #include "Snapshot.h"
 #include "DateUtils.h"
 #include "Allocators.h"
-
-struct Counter {
-    uint64_t value = 0;
-    operator uint64_t() const {
-        return value;
-    }
-    uint64_t operator++() {
-        value++;
-        return value;
-    }
-    uint64_t operator++(int) {
-        uint64_t tmp = value;
-        value++;
-        return tmp;
-    }
-};
+#include "Counter.h"
 
 // The actual test run, templated by map type
 template <template <typename Key, typename Value, typename AllocType> class MapType,
@@ -36,8 +21,8 @@ template <template <typename Key, typename Value, typename AllocType> class MapT
 void testme(const std::string& testname, Snapshot& snap,
             const std::vector<std::string_view>& allwords, uint32_t numwords,
             double runsecs) {
-    using KeyValuePair = std::pair<std::string_view, Counter>;
-    MapType<std::string_view, Counter, AllocatorType<KeyValuePair>> words;
+    using KeyValuePair = std::pair<std::string_view, Counter<int>>;
+    MapType<std::string_view, Counter<int>, AllocatorType<KeyValuePair>> words;
 
     double start = now();
     snap.start();
@@ -46,10 +31,6 @@ void testme(const std::string& testname, Snapshot& snap,
         for (std::string_view w : allwords) words[w]++;
         counter++;
     } while (now() < start + runsecs);
-    uint64_t total = 0;
-    for (auto iw : words) {
-        total += iw.second;
-    }
     snap.stop(testname, numwords, counter * allwords.size());
 
 #ifdef DEBUG
@@ -85,7 +66,7 @@ int main() {
     std::string text = toupper(datasets::bible);
 
     // Count unique words in the text and store them in a vector
-    std::map<std::string_view, Counter> wordcount;
+    std::map<std::string_view, Counter<int>> wordcount;
     std::vector<std::string_view> allwords;
     split(text, '\n', [&allwords, &wordcount](std::string_view line) -> bool {
         // The format is like
@@ -143,7 +124,7 @@ int main() {
     double runsecs = 0.5;
 
     // Start snapshotting
-    Snapshot snap(1);
+    Snapshot snap;
     for (unsigned numwords = 500; numwords < allwords.size(); numwords += numwords / 4) {
         // Create a word filter with the N most popular words
         std::set<std::string_view> wordfilter;

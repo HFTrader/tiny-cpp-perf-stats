@@ -31,7 +31,7 @@ void summary( const MicroStats<N>& ms )
               << " 99pct:" << ms.percentile(99)
               << " Stdev:" << (ms.percentile(100-100*sd1) - ms.percentile(100*sd1))/2
               << " Stdev:" << (ms.percentile(100-100*sd2) - ms.percentile(100*sd2))/4
-              << std::endl;
+              << '\n';
 }
 
 int main( int argc, char* argv[] )
@@ -70,7 +70,7 @@ int main( int argc, char* argv[] )
     summary( ms );
     ms.clear();
 
-    std::cout << "Cost of MicroStats (measure+bin)" << std::endl;
+    std::cout << "Cost of MicroStats (measure+bin)" << '\n';
     summary( tms );
     tms.clear();
 
@@ -83,6 +83,6 @@ int main( int argc, char* argv[] )
             if ( t1>t0 ) tms.add( t1-t0 );
         }
     }
-    std::cout << "Cost of measuring only" << std::endl;
+    std::cout << "Cost of measuring only" << '\n';
     summary( tms );
 }

@@ -126,7 +126,7 @@ void saveGraphs( const std::vector<uint32_t>& sizes,
         char filename[256];
         ::sprintf( filename, "%s_pct%02d.png", Policy::Name, Policy::Percentiles[np] );
         surface->write_to_png(filename);
-        std::cout << "Wrote png file \"" << filename << "\"" << std::endl;
+        std::cout << "Wrote png file \"" << filename << "\"" << '\n';
     }
 }
 
@@ -204,7 +204,7 @@ void calcResults()
                 std::cout << pct << "," << val << ",";
                 values[ idx++ ] = val;
             }
-            std::cout << std::endl;
+            std::cout << '\n';
         }
     }
 #ifdef CAIRO_HAS_PNG_FUNCTIONS

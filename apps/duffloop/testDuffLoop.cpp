@@ -30,9 +30,9 @@ static void testBasicLoop(uint64_t numloops)
                execute_loop_basic(data1, data2, 10000);
                return 1;
            });
-    std::cout << "Basic loop:" << std::endl;
+    std::cout << "Basic loop:" << '\n';
     hist.print(std::cout);
-    std::cout << std::endl;
+    std::cout << '\n';
 }
 
 void execute_loop_duff(int &data1, int &data2, const size_t loop_size)
@@ -66,9 +66,9 @@ static void testDuffsDevice(uint64_t numloops)
                execute_loop_duff(data1, data2, 10000);
                return 1;
            });
-    std::cout << "Duffs device:" << std::endl;
+    std::cout << "Duffs device:" << '\n';
     hist.print(std::cout);
-    std::cout << std::endl;
+    std::cout << '\n';
 }
 
 int main()

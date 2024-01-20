@@ -18,12 +18,12 @@ A test was created that uses the scheduler problem implemented in two naive ways
 - std::multimap
 - std::priority_queue
 
-[![PayPal me](https://www.paypalobjects.com/webstatic/en_US/i/buttons/PP_logo_h_100x26.png)](https://paypal.me/HenriqueBucher?locale.x=en_US)
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/Z8Z85JMPK)
 
 ## Dependencies:
 
-- Boost math/statistics
+- Boost math/statistics/container
+
+If you boost is 
 
 - Armadillo C++ Algebra
 
@@ -90,7 +90,9 @@ Vitorian LLC
 
 We are a C++/FinTech startup. Please support our work!
 
-web: www.vitorian.com/x1
+web: www.vitorian.com
+
+substack: lucisqr.substack.com
 
 email: henry@vitorian.com
 

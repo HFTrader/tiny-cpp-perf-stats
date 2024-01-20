@@ -5,6 +5,15 @@
 #include <algorithm>
 #include <cstring>
 
+template <size_t N>
+struct TinyString {
+    char buffer[N];
+    friend std::ostream& operator<<(std::ostream& out, const TinyString<N>& res) {
+        out << res.buffer;
+        return out;
+    }
+};
+
 // Dearly missing split function from the STL
 // I should have it as string_view instead but it's not ubiquitous yet
 template <typename SepFn, typename CallFn>

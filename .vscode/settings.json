@@ -78,6 +78,9 @@
         "fstream": "cpp",
         "iomanip": "cpp",
         "shared_mutex": "cpp",
-        "sstream": "cpp"
+        "sstream": "cpp",
+        "list": "cpp",
+        "forward_list": "cpp",
+        "__verbose_abort": "cpp"
     }
 }
