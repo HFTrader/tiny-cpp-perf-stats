@@ -81,6 +81,7 @@
         "sstream": "cpp",
         "list": "cpp",
         "forward_list": "cpp",
-        "__verbose_abort": "cpp"
+        "__verbose_abort": "cpp",
+        "unordered_set": "cpp"
     }
 }
