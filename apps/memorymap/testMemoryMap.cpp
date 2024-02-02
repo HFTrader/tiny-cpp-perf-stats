@@ -16,6 +16,7 @@
 #include <linux/limits.h>
 #include <xmmintrin.h>
 
+#include <fstream>
 #include <iostream>
 #include <cstdint>
 #include <string>
@@ -116,7 +117,7 @@ public:
         __sync_synchronize();
         __sync_lock_release(&val);
     }
-    bool locked() noexcept {
+    bool locked() const noexcept {
         return val != 0;
     }
 
@@ -343,9 +344,6 @@ void parseCommandLine(int argc, char* argv[], CommandLineOptions& opt) {
     }
 }
 
-#include <fstream>
-#include <iostream>
-
 struct strproxy {
     const char* start;
     size_t length;
@@ -373,7 +371,7 @@ struct strproxy {
     operator std::string() const {
         return std::string(start, length);
     }
-    bool operator==(const strproxy& rhs) {
+    bool operator==(const strproxy& rhs) const {
         if (length != rhs.length) return false;
         return ::memcmp(start, rhs.start, length) == 0;
     }
@@ -396,10 +394,10 @@ static int64_t getHugePageSize() {
                         return value * 1024;
                     }
                     if (strstr(ends, "mB") != nullptr) {
-                        return value * (1024 * 1024);
+                        return value * (1024L * 1024);
                     }
                     if (strstr(ends, "gB") != nullptr) {
-                        return value * (1024 * 1024 * 1024);
+                        return value * (1024L * 1024 * 1024);
                     }
                 }
             }
@@ -428,13 +426,14 @@ int main(int argc, char* argv[]) {
                         test.offset = offset;
                         test.numloops = numloops;
                         test.waitcycles = cycles;
-                        switch (testnum) {
+                        switch (testnum % 4) {
                             case 0: testSpinLock<RigtorpSpinLock>(snap, test); break;
                             case 1: testSpinLock<BryceSpinLock>(snap, test); break;
                             case 2:
                                 testSpinLock<BryceSimplifiedSpinLock>(snap, test);
                                 break;
                             case 3: testSpinLock<TASSpinLock>(snap, test); break;
+                            default: break;
                         };
                     }
                     snap.summary(testnames[testnum]);

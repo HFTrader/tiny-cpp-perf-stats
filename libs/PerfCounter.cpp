@@ -6,7 +6,6 @@
 #include <string.h>
 #include <sys/ioctl.h>
 #include <asm/unistd.h>
-#include <unistd.h>
 #include <linux/perf_event.h>
 #include <linux/hw_breakpoint.h>
 
@@ -55,7 +54,7 @@ bool PerfCounter::init(const std::string& name, unsigned int type, long long eve
     return true;
 }
 
-bool PerfCounter::start() {
+bool PerfCounter::start() const {
     if (_fd < 0) return false;
     int res = ioctl(_fd, PERF_EVENT_IOC_RESET, 0);
     if (res != 0) {
@@ -68,7 +67,7 @@ bool PerfCounter::start() {
     return true;
 }
 
-uint64_t PerfCounter::stop() {
+uint64_t PerfCounter::stop() const {
     uint64_t count = 0;
     if (_fd >= 0) {
         int res = ioctl(_fd, PERF_EVENT_IOC_DISABLE, 0);

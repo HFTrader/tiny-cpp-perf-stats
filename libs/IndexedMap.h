@@ -6,13 +6,14 @@
 
 namespace hb {
 
-template <typename Key, typename Value, typename IndexType = std::size_t>
+template <typename Key, typename Value, typename IndexType = std::size_t,
+          template <typename, typename, typename...> class MapContainer = std::map>
 class IndexedMap {
     static constexpr IndexType InvalidIndex = std::numeric_limits<IndexType>::max();
     struct Index {
         IndexType index = InvalidIndex;
     };
-    using MapType = std::map<Key, Index>;
+    using MapType = MapContainer<Key, Index>;
     using Vector = std::vector<Value>;
     MapType _map;
     Vector _vec;

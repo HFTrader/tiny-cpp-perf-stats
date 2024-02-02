@@ -26,10 +26,10 @@ public:
     int fid();
 
     /** Enables the internal event capturing */
-    bool start();
+    bool start() const;
 
     /** Disables the internal event capturing */
-    uint64_t stop();
+    uint64_t stop() const;
 
     /** Closes the underlying file - called automatically by the destructor */
     void close();
