@@ -17,6 +17,7 @@
 #include "Datasets.h"
 #include "Ticker.h"
 #include "DateUtils.h"
+#include "Regression.h"
 
 #include <boost/random/mersenne_twister.hpp>
 #include <boost/random/uniform_int_distribution.hpp>
@@ -180,5 +181,5 @@ int main(int argc, char* argv[]) {
     }
 
     // Print summary
-    snap.summary("Map");
+    summary(snap.getSamples(), "Map");
 }

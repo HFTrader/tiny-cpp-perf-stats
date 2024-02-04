@@ -14,6 +14,7 @@
 #include "DateUtils.h"
 #include "Allocators.h"
 #include "Counter.h"
+#include "Regression.h"
 
 // The actual test run, templated by map type
 template <template <typename Key, typename Value, typename AllocType> class MapType,
@@ -183,5 +184,5 @@ int main() {
                                          numwords, runsecs);
     }
 
-    snap.summary("WordMap");
+    summary(snap.getSamples(), "WordMap");
 }

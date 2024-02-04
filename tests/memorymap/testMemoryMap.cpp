@@ -26,6 +26,7 @@
 #include "Snapshot.h"
 #include "MMapFile.h"
 #include "MicroStats.h"
+#include "Regression.h"
 
 constexpr bool DEBUG = false;
 
@@ -436,7 +437,7 @@ int main(int argc, char* argv[]) {
                             default: break;
                         };
                     }
-                    snap.summary(testnames[testnum]);
+                    summary(snap.getSamples(), testnames[testnum]);
                 }
             }
         }

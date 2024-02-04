@@ -22,10 +22,18 @@ set( CMAKE_CXX_STANDARD 17 )
 
 include( FindPkgConfig )
 find_package( Boost COMPONENTS container )
+if ( Boost_CONTAINER_FOUND ) 
+  add_definitions( -DBOOST_CONTAINER_FOUND )
+endif()
+
 find_package( Armadillo )
+if ( Armadillo_FOUND )
+  add_definitions( -DARMADILLO_FOUND )
+  include_directories( ${ARMADILLO_INCLUDE_DIR} )
+  set( REQUIRED_LIBS rt ${ARMADILLO_LIBRARY} ${LAPACK_LIBRARY} arpack )
+endif()
+
 pkg_check_modules( CairoMM cairomm-1.0 cairomm-png-1.0 cairomm-svg-1.0 )
-set( REQUIRED_LIBS rt ${ARMADILLO_LIBRARY} ${LAPACK_LIBRARY} arpack )
-include_directories( ${ARMADILLO_INCLUDE_DIR} )
 if ( CairoMM_FOUND )
   add_definitions( -DCairoMM_FOUND )
   list( APPEND REQUIRED_LIBS ${CairoMM_LIBRARIES} )
@@ -41,14 +49,9 @@ include_directories( libs )
 
 set( TARGETS  tinyperfstats )
 
-if ( TINYPERF_BUILD_TESTS )
+if ( TINYPERF_BUILD_TESTS AND Armadillo_FOUND )
   add_subdirectory( datasets )
-  add_subdirectory( apps )
-  list( APPEND TARGETS
-    scheduler_lib  testScheduler
-    testMemoryMap testTickerLookup testWordMap
-    testMicroStats testCacheSize
-    testDuffLoop )
+  add_subdirectory( tests )
 endif()
 
 install( TARGETS ${TARGETS}

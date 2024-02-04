@@ -6,6 +6,7 @@
 #include "SchedulerPriorityQueue.h"
 #include "SchedulerMultimap.h"
 #include "Snapshot.h"
+#include "Regression.h"
 
 template <class Scheduler>
 void test(Snapshot& snap, uint64_t numitems, uint64_t numclasses, uint64_t numloops) {
@@ -76,7 +77,8 @@ int main(int argc, char* argv[]) {
                 test<SchedulerMultimap>(snap, numitems, numclasses, numloops);
             }
         }
-        snap.summary(ctype);
+
+        summary(snap.getSamples(), ctype);
     };
 
     return 0;

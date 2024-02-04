@@ -26,19 +26,17 @@ public:
             return std::numeric_limits<double>::quiet_NaN();
         }
     };
+    using SampleVector = std::vector<Sample>;
+    using SampleMap = std::unordered_map<std::string, SampleVector>;
 
     Snapshot();
     Snapshot(const std::vector<std::string> &pmc);
     ~Snapshot();
     void start();
     Sample stop(const std::string &evname, uint64_t numitems, uint64_t numrep);
-    void summary(const std::string &header, FILE *fout = stdout);
+    const SampleMap &getSamples() const;
 
 private:
-    std::unordered_map<std::string, int> events;
     PerfGroup counters;
-    using SampleVector = std::vector<Sample>;
-    using SampleMap = std::unordered_map<std::string, SampleVector>;
     SampleMap samples;
-    int debug;
 };
