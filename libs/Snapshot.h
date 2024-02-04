@@ -14,7 +14,7 @@ public:
     using EventName = std::string;
     struct Metric {
         std::string name;
-        std::vector<size_t> values;
+        std::vector<double> values;
     };
     struct Event {
         std::string name;

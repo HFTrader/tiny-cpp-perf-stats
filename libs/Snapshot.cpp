@@ -29,6 +29,7 @@ void Snapshot::stop(const char *event_name, uint64_t numitems, uint64_t numitera
     if (numiterations > 0) {
         Event &event(events[event_name]);
         if (event.metrics.empty()) {
+            event.name = event_name;
             event.metrics.resize(counters.size());
             for (size_t j = 0; j < counters.size(); ++j) {
                 event.metrics[j].name = counters.name(j);

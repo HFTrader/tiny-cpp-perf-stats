@@ -153,8 +153,6 @@ void summary(const Snapshot::EventMap &events, const std::string &header,
             for (size_t row = 0; row < numsamples; ++row) {
                 reg.C(row, dependent_index) = option.convert(event.N[row]);
             }
-            std::cout << reg.C << std::endl;
-            std::cout << reg.b << std::endl;
             if (!reg.solve()) continue;
             // if (reg.pval.max() > 0.05) continue;
             if ((not found) or (reg.aic < bestreg.aic)) {
@@ -176,7 +174,7 @@ void summary(const Snapshot::EventMap &events, const std::string &header,
             for (size_t col = 0; col < numvars; ++col) {
                 std::string colname = event.metrics[col].name;
                 if (col == dependent_index) colname = bestname;
-                snprintf(line, sizeof(line), "   Term: %-12s  p:%7.5f coef:%g\n",
+                snprintf(line, sizeof(line), "   %-15s  p:%7.5f coef:%g\n",
                          colname.c_str(), bestreg.pval(col), bestreg.sol(col));
                 out << line;
             }
