@@ -80,8 +80,9 @@ public:
             oss << v << "%," << percentile(v) << ",";
         }
     }
-    friend inline operator<<(std::ostream& out, const MicroStats& ms) {
+    friend inline std::ostream& operator<<(std::ostream& out, const MicroStats& ms) {
         ms.print(out);
+        return out;
     }
 
 private:
