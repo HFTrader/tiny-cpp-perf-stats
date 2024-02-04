@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <array>
+#include <iostream>
 
 #if defined(__GNUC__) && defined(__x86_64__)
 //! Returns the most significant bit
@@ -78,6 +79,9 @@ public:
         for (double v : {10, 25, 50, 75, 90, 95, 99}) {
             oss << v << "%," << percentile(v) << ",";
         }
+    }
+    friend inline operator<<(std::ostream& out, const MicroStats& ms) {
+        ms.print(out);
     }
 
 private:
