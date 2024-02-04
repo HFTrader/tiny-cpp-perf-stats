@@ -3,9 +3,5 @@
 #include "Snapshot.h"
 #include <iostream>
 
-using SampleVector = std::vector<Snapshot::Sample>;
-using SampleMap = std::unordered_map<std::string, SampleVector>;
-SampleMap samples;
-
-void summary(const SampleMap &samples, const std::string &header,
-             std::ostream &out = std::cout);
+void summary(const Snapshot::EventMap &samples, const std::string &header,
+             const std::string &dependent_name = "cycles", std::ostream &out = std::cout);

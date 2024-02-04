@@ -72,7 +72,7 @@ void testme(const std::string& key, Snapshot& snap,
             counter++;
         }
     } while (now() < start + runsecs);
-    snap.stop(key, numtickers, counter);
+    snap.stop(key.c_str(), numtickers, counter);
 
     // The sum of all counters has to match
     for (auto& ev : bookmap) {
@@ -181,5 +181,5 @@ int main(int argc, char* argv[]) {
     }
 
     // Print summary
-    summary(snap.getSamples(), "Map");
+    summary(snap.getEvents(), "Map");
 }

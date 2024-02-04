@@ -239,14 +239,14 @@ void testSpinLock(Snapshot& snap, TestOptions& opt) {
         busywait(opt.waitcycles);
     }
 
-    Snapshot::Sample sample = snap.stop("Loop", 1, opt.numloops);
+    snap.stop("Loop", 1, opt.numloops);
     fprintf(stdout,
             "%s,%s,Reps,%d,Pad,%d,Wait,%d,Wall,%ld,Cyc,%1.1f,Instr,%1.1f,Cache,%1.1f,"
             "Branch,%1.1f,"
             "P10,%1.0f,P50,%1.0f,P90,%1.0f,P99,%1.0f\n",
             opt.testname.c_str(), prname, opt.numloops, opt.offset, opt.waitcycles,
-            sumcycles / opt.numloops, sample["cycles"], sample["instructions"],
-            sample["cache-misses"], sample["branch-misses"], ustats.percentile(10),
+            sumcycles / opt.numloops, snap["cycles"], snap["instructions"],
+            snap["cache-misses"], snap["branch-misses"], ustats.percentile(10),
             ustats.percentile(50), ustats.percentile(90), ustats.percentile(99));
 
     // Wait for children
@@ -437,7 +437,7 @@ int main(int argc, char* argv[]) {
                             default: break;
                         };
                     }
-                    summary(snap.getSamples(), testnames[testnum]);
+                    summary(snap.getEvents(), testnames[testnum]);
                 }
             }
         }

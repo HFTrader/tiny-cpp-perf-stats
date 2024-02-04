@@ -28,18 +28,6 @@ struct RegResults {
     bool solve();
 };
 
-static bool calcModel(const std::vector<uint32_t> &model, const arma::mat &C,
-                      const arma::vec &b, RegResults &reg) {
-    uint32_t numcols = model.size();
-    uint32_t numrows = C.n_rows;
-    reg.b = b;
-    reg.C.resize(numrows, numcols);
-    for (uint32_t j = 0; j < numcols; ++j) {
-        reg.C.col(j) = C.col(model[j]);
-    }
-    return reg.solve();
-}
-
 static arma::colvec cdf(const arma::colvec &x, uint32_t ndof) {
     unsigned nrows = x.n_rows;
     arma::colvec y(nrows);
@@ -104,129 +92,92 @@ bool RegResults::solve() {
     return true;
 }
 
-void summary(const SampleMap &samples, const std::string &header, std::ostream &out) {
-    struct Variable {
-        int id = -1;
-        int group;
+void summary(const Snapshot::EventMap &events, const std::string &header,
+             const std::string &dependent_name, std::ostream &out) {
+    struct Option {
         std::string name;
+        std::function<double(size_t)> convert;
     };
-    struct Group {
-        int id = -1;
-        std::vector<int> vars;
-    };
-    // cycle through events map assigning groups and counting total samples to build
-    // the stats matrix
-    std::string dependent_name = "cycles";
-    std::map<std::string, Variable> varmap;
-    using GroupKey = std::pair<std::string, int>;
-    IndexedMap<GroupKey, Group> groups;
-    std::vector<Variable> vars;
-    size_t numsamples = 0;
-    for (const auto &ism : samples) {
-        numsamples += ism.second.size();
+    std::vector<Option> options = {
+        {"N", [](size_t n) { return n; }},
+        {"logN", [](size_t n) { return log(n) / log(10); }},
+        {"N2", [](size_t n) { return n * n; }},
+        {"NlogN", [](size_t n) { return n * log(n) / log(10); }}};
+
+    for (const auto &ism : events) {
         std::string event_name = ism.first;
-        for (const Snapshot::Sample &sample : ism.second) {
-            for (const Snapshot::Metric &metric : sample) {
-                // Skip the dependent variable
-                if (metric.name == dependent_name) {
-                    continue;
-                }
+        const Snapshot::Event &event(ism.second);
 
-                // Get or create a group for this key
-                Group &group(groups[{event_name, metric.group}]);
-                if (group.id < 0) {
-                    group.id = groups.size() - 1;
-                }
+        size_t numsamples = event.N.size();
+        size_t numvars = event.metrics.size();
 
-                // Recreate the key for this metric - global metric if necessary
-                std::string key = (metric.global ? "" : event_name + ":") + metric.name;
-                Variable &var(varmap[key]);
-                if (var.id < 0) {
-                    var.id = varmap.size() - 1;
-                    var.name = key;
-                    vars.push_back({var.id, group.id, key});
-                    group.vars.push_back(var.id);
-                }
-                var.group = group.id;
+        // find the dependent index
+        size_t dependent_index;
+        bool found_index = false;
+        for (int col = 0; col < numvars; ++col) {
+            std::string metric_name = event.metrics[col].name;
+            if (metric_name == dependent_name) {
+                dependent_index = col;
+                break;
             }
         }
-    }
-
-    // Build the stats matrix
-    size_t numvars = vars.size();
-    size_t numgroups = groups.size();
-    arma::mat C(numsamples, numvars);
-    arma::vec b(numsamples);
-
-    // Count variables
-    std::vector<uint32_t> group_counts(numgroups);
-    for (uint32_t j = 0; j < numgroups; ++j) group_counts[j] = 0;
-    for (const Group &group : groups) {
-        group_counts[group.id] = group.vars.size();
-    }
-
-    // cycle through all samples, filling up the matrix
-    size_t row = 0;
-    for (const auto &ism : samples) {
-        std::string event_name = ism.first;
-        for (const Snapshot::Sample &sample : ism.second) {
-            for (const Snapshot::Metric &metric : sample) {
-                if (metric.name == dependent_name) {
-                    b(row) = metric.value;
-                } else {
-                    std::string key =
-                        (metric.global ? "" : event_name + ":") + metric.name;
-                    Variable &var(varmap[key]);
-
-                    if (var.id >= 0) {
-                        C(row, var.id) = metric.value;
-                    } else {
-                        std::cerr << "This should never happen!"
-                                  << "\n";
-                    }
-                }
-            }
-            row++;
+        if (!found_index) {
+            out << "Could not find dependent variable [" << dependent_name
+                << "] in the metrics list\n";
+            return;
         }
-    }
 
-    // Now generate all possible combinations of models
-    RegResults bestreg;
-    bool found = false;
-    std::vector<uint32_t> bestmodel;
-
-    Product<uint32_t> indices(group_counts);
-    while (indices.next()) {
-        std::vector<uint32_t> model(numgroups);
-        for (int ng = 0; ng < numgroups; ++ng) {
-            int index = indices[ng];
-            int var_index = groups[ng].vars[index];
-            model[ng] = var_index;
-        }
+        // Build the stats matrix
         RegResults reg;
-        if (calcModel(model, C, b, reg)) {
+        reg.C = arma::mat(numsamples, numvars);
+        reg.b = arma::colvec(numsamples);
+
+        // cycle through all samples, filling up the matrix
+        // we will replace later the dependent variable column with N/logN/etc
+        for (size_t col = 0; col < numvars; ++col) {
+            for (int row = 0; row < numsamples; ++row) {
+                reg.C(row, col) = event.metrics[col].values[row];
+            }
+        }
+        for (int row = 0; row < numsamples; ++row) {
+            reg.b(row) = event.metrics[dependent_index].values[row];
+        }
+
+        RegResults bestreg;
+        std::string bestname;
+        bool found = false;
+
+        for (const auto &option : options) {
+            // Replace dependent variable column with flavors of "N"
+            for (size_t row = 0; row < numsamples; ++row) {
+                reg.C(row, dependent_index) = option.convert(event.N[row]);
+            }
+            if (!reg.solve()) continue;
             if (reg.pval.max() > 0.05) continue;
             if ((not found) or (reg.aic < bestreg.aic)) {
                 bestreg = reg;
-                bestmodel = model;
+                bestname = option.name;
                 found = true;
             }
         }
-    }
 
-    if (not found) {
-        out << "    Model did not converge or not enough points\n";
-    } else {
-        out << "\n========== Best Model\n" << header << ", ";
-        char line[256];
-        snprintf(line, sizeof(line), " Rsq:%5.2f F:%f LL:%f aic:%f bic:%f \n",
-                 bestreg.rsq, bestreg.fpval, bestreg.loglik, bestreg.aic, bestreg.bic);
-        out << line;
-        for (unsigned j = 0; j < bestmodel.size(); ++j) {
-            snprintf(line, sizeof(line), "   Term: %-12s  p:%7.5f coef:%g\n",
-                     vars[bestmodel[j]].name.c_str(), bestreg.pval(j), bestreg.sol(j));
-            out << line;
+        if (not found) {
+            out << "    Model did not converge or not enough points\n";
+        } else {
+            out << "\n========== Best Model:\n" << event.name << ", ";
+            char line[256];
+            snprintf(line, sizeof(line), " Rsq:%5.2f F:%f LL:%f aic:%f bic:%f \n",
+                     bestreg.rsq, bestreg.fpval, bestreg.loglik, bestreg.aic,
+                     bestreg.bic);
+            out << header << "," << line;
+            for (size_t col = 0; col < numvars; ++col) {
+                std::string colname = event.metrics[col].name;
+                if (col == dependent_index) colname = bestname;
+                snprintf(line, sizeof(line), "   Term: %-12s  p:%7.5f coef:%g\n",
+                         colname.c_str(), bestreg.pval(col), bestreg.sol(col));
+                out << line;
+            }
+            out << "\n";
         }
-        out << "\n";
     }
 }

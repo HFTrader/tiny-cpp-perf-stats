@@ -32,7 +32,7 @@ void testme(const std::string& testname, Snapshot& snap,
         for (std::string_view w : allwords) words[w]++;
         counter++;
     } while (now() < start + runsecs);
-    snap.stop(testname, numwords, counter * allwords.size());
+    snap.stop(testname.c_str(), numwords, counter * allwords.size());
 
 #ifdef DEBUG
 #endif
@@ -184,5 +184,5 @@ int main() {
                                          numwords, runsecs);
     }
 
-    summary(snap.getSamples(), "WordMap");
+    summary(snap.getEvents(), "WordMap");
 }

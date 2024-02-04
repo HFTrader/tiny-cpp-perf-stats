@@ -5,38 +5,35 @@
 #include <map>
 #include <limits>
 #include <unordered_map>
+#include <iostream>
 #include "PerfGroup.h"
 
 class Snapshot {
 public:
+    using MetricName = std::string;
+    using EventName = std::string;
     struct Metric {
-        std::string name;  // the name of the metric
-        double value;      // the value of the metric in this sample
-        int group;         // to create alternates like O(1) or O(logN) or O(N)
-        bool global;       // does this apply to all tests globally?
+        std::string name;
+        std::vector<size_t> values;
     };
-    struct Sample : std::vector<Metric> {
-        double operator[](const std::string &name) const {
-            return get(name);
-        }
-        double get(const std::string &name) const {
-            for (const Metric &s : *this) {
-                if (s.name == name) return s.value;
-            }
-            return std::numeric_limits<double>::quiet_NaN();
-        }
+    struct Event {
+        std::string name;
+        std::vector<size_t> N;
+        std::vector<Metric> metrics;
     };
-    using SampleVector = std::vector<Sample>;
-    using SampleMap = std::unordered_map<std::string, SampleVector>;
+    using EventMap = std::map<EventName, Event>;
 
     Snapshot();
     Snapshot(const std::vector<std::string> &pmc);
     ~Snapshot();
     void start();
-    Sample stop(const std::string &evname, uint64_t numitems, uint64_t numrep);
-    const SampleMap &getSamples() const;
+    void stop(const char *event, uint64_t numitems, uint64_t numrep);
+    const EventMap &getEvents() const;
+    double operator[](std::size_t index) const;
+    double operator[](const char *key) const;
 
 private:
     PerfGroup counters;
-    SampleMap samples;
+    EventMap events;
+    std::size_t last_iterations = 0;
 };

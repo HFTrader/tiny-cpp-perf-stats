@@ -23,24 +23,35 @@ void Snapshot::start() {
     counters.start();
 }
 
-Snapshot::Sample Snapshot::stop(const std::string &event_name, uint64_t numitems,
-                                uint64_t numiterations) {
+void Snapshot::stop(const char *event_name, uint64_t numitems, uint64_t numiterations) {
     counters.stop();
-    Sample samp;
+    last_iterations = numiterations;
     if (numiterations > 0) {
-        samp.push_back({"Constant", (double)1, 0, false});
-        samp.push_back({"N", (double)numitems, 1, false});
-        samp.push_back({"N2", double(numitems) * double(numitems), 1, false});
-        samp.push_back({"log(N)", (double)log(numitems) / log(10), 1, false});
-        for (size_t j = 0; j < counters.size(); ++j) {
-            double value = double(counters[j]) / numiterations;
-            samp.push_back({counters.name(j), value, int(2 + j), false});
+        Event &event(events[event_name]);
+        if (event.metrics.empty()) {
+            event.metrics.resize(counters.size());
+            for (size_t j = 0; j < counters.size(); ++j) {
+                event.metrics[j].name = counters.name(j);
+            }
         }
-        samples[event_name].push_back(samp);
+        event.N.push_back(numitems);
+        for (size_t j = 0; j < counters.size(); ++j) {
+            double average = double(counters[j]) / numiterations;
+            event.metrics[j].values.push_back(average);
+        }
     }
-    return samp;
 }
 
-const Snapshot::SampleMap &Snapshot::getSamples() const {
-    return samples;
+const Snapshot::EventMap &Snapshot::getEvents() const {
+    return events;
+}
+
+double Snapshot::operator[](std::size_t index) const {
+    if (last_iterations == 0) return std::numeric_limits<double>::quiet_NaN();
+    return double(counters[index]) / last_iterations;
+}
+
+double Snapshot::operator[](const char *key) const {
+    if (last_iterations == 0) return std::numeric_limits<double>::quiet_NaN();
+    return double(counters[key]) / last_iterations;
 }

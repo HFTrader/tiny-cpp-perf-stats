@@ -78,7 +78,7 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        summary(snap.getSamples(), ctype);
+        summary(snap.getEvents(), ctype, "cycles");
     };
 
     return 0;
