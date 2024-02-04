@@ -118,6 +118,7 @@ void summary(const Snapshot::EventMap &events, const std::string &header,
             std::string metric_name = event.metrics[col].name;
             if (metric_name == dependent_name) {
                 dependent_index = col;
+                found_index = true;
                 break;
             }
         }
