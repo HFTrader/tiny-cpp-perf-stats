@@ -153,8 +153,10 @@ void summary(const Snapshot::EventMap &events, const std::string &header,
             for (size_t row = 0; row < numsamples; ++row) {
                 reg.C(row, dependent_index) = option.convert(event.N[row]);
             }
+            std::cout << reg.C << std::endl;
+            std::cout << reg.b << std::endl;
             if (!reg.solve()) continue;
-            if (reg.pval.max() > 0.05) continue;
+            // if (reg.pval.max() > 0.05) continue;
             if ((not found) or (reg.aic < bestreg.aic)) {
                 bestreg = reg;
                 bestname = option.name;
