@@ -130,7 +130,7 @@ void summary(const Snapshot::EventMap &events, const std::string &header,
 
         // Build the stats matrix
         RegResults reg;
-        reg.C = arma::mat(numsamples, numvars);
+        reg.C = arma::mat(numsamples, numvars + 1);
         reg.b = arma::colvec(numsamples);
 
         // cycle through all samples, filling up the matrix
@@ -142,6 +142,7 @@ void summary(const Snapshot::EventMap &events, const std::string &header,
         }
         for (int row = 0; row < numsamples; ++row) {
             reg.b(row) = event.metrics[dependent_index].values[row];
+            reg.C(row, numvars) = 1;
         }
 
         RegResults bestreg;
@@ -171,9 +172,14 @@ void summary(const Snapshot::EventMap &events, const std::string &header,
                      bestreg.rsq, bestreg.fpval, bestreg.loglik, bestreg.aic,
                      bestreg.bic);
             out << header << "," << line;
-            for (size_t col = 0; col < numvars; ++col) {
-                std::string colname = event.metrics[col].name;
-                if (col == dependent_index) colname = bestname;
+            for (size_t col = 0; col <= numvars; ++col) {
+                std::string colname;
+                if (col == dependent_index)
+                    colname = bestname;
+                else if (col == numvars)
+                    colname = "Constant";
+                else
+                    colname = event.metrics[col].name;
                 snprintf(line, sizeof(line), "   %-15s  p:%7.5f coef:%g\n",
                          colname.c_str(), bestreg.pval(col), bestreg.sol(col));
                 out << line;
