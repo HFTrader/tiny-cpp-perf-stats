@@ -11,78 +11,92 @@ uint64_t now() {
 #include <chrono>
 uint64_t now() {
     using std::chrono;
-    return duration_cast<nanoseconds>(
-        system_clock::now().time_since_epoch()).count();
+    return duration_cast<nanoseconds>(system_clock::now().time_since_epoch()).count();
 }
 #endif
 
-template< uint32_t N >
-void summary( const MicroStats<N>& ms )
-{
-    constexpr double sd2 = 0.022750131948178987;
-    constexpr double sd1 = 0.15865525393145702;
-    std::cout << "10pct:" << ms.percentile(10)
-              << " -2SD:" << ms.percentile(100*sd2)
-              << " -1SD:" << ms.percentile(100*sd1)
-              << " 50pct:" << ms.percentile(50)
-              << " +1SD:" << ms.percentile(100-100*sd1)
-              << " +2SD:" << ms.percentile(100-200*sd2)
-              << " 90pct:" << ms.percentile(90)
-              << " 99pct:" << ms.percentile(99)
-              << " Stdev:" << (ms.percentile(100-100*sd1) - ms.percentile(100*sd1))/2
-              << " Stdev:" << (ms.percentile(100-100*sd2) - ms.percentile(100*sd2))/4
+template <uint32_t N>
+void summary(const std::string& title, const MicroStats<N>& ms) {
+    constexpr double sd2 = 47.71;
+    constexpr double sd1 = 34.13;
+    std::cout << title << "\n\tPercentiles (1/10/50/90/99): " << ms.percentile(1) << " "
+              << ms.percentile(10) << " " << ms.percentile(50) << " " << ms.percentile(90)
+              << " " << ms.percentile(99) << " "
+              << "\n\tSD(-2/-1/+1/+2):" << ms.percentile(50 - sd2) << " "
+              << ms.percentile(50 - sd1) << " " << ms.percentile(50 + sd1) << " "
+              << ms.percentile(50 + sd2)
+              << "\n\tSd:" << (ms.percentile(50 + sd1) - ms.percentile(50 - sd1)) / 2
+              << "\n\t2Sd:" << (ms.percentile(50 + sd2) - ms.percentile(50 - sd2)) / 2
               << '\n';
 }
 
-int main( int argc, char* argv[] )
-{
-    MicroStats<3> ms;
+int main(int argc, char* argv[]) {
+    using Histogram = MicroStats<6>;
+    int bin = Histogram::calcbin(1000);
+    auto range = Histogram::calcrange(bin);
+    std::cout << "Total number of bins: " << Histogram::NUMBINS << "\n";
+    std::cout << "Bin for value 1000: " << bin << "\n";
+    std::cout << "Range for bin " << bin << ": " << range.from << "-" << range.to << "\n";
 
     // Single point distribution
-    for ( uint32_t j=0; j<1000; ++j ) {
-        ms.add( 1000 );
+    Histogram ms;
+    for (uint32_t j = 0; j < 1000; ++j) {
+        ms.add(1000);
     }
-    summary( ms );
+    summary("Single Point Distribution at 1,000", ms);
     ms.clear();
 
     // Uniform distribution over [0,10000]
-    for ( uint32_t j=0; j<10000; ++j ) {
-        ms.add( j );
+    for (uint32_t j = 0; j < 10000; ++j) {
+        ms.add(j);
     }
-    summary( ms );
+    summary("Uniform Distribution Over [0,10,000]", ms);
     ms.clear();
 
     // Random distribution
-    MicroStats<4> tms;
+    Histogram tms;
+
+    bin = Histogram::calcbin(50000);
+    range = Histogram::calcrange(bin);
+    std::cout << "Bin for value 50000: " << bin;
+    std::cout << "  range: " << range.from << "-" << range.to << "\n";
+    bin = Histogram::calcbin(50000 - 2500);
+    range = Histogram::calcrange(bin);
+    std::cout << "Bin for value 47500: " << bin;
+    std::cout << "  range: " << range.from << "-" << range.to << "\n";
+    bin = Histogram::calcbin(50000 + 2500);
+    range = Histogram::calcrange(bin);
+    std::cout << "Bin for value 52500: " << bin;
+    std::cout << "  range: " << range.from << "-" << range.to << "\n";
+
     std::default_random_engine generator;
-    std::normal_distribution<double> distribution(50000.0,2500.0);
-    for ( uint32_t j=0; j<10000000; ++j ) {
+    std::normal_distribution<double> distribution(50000.0, 2500.0);
+    for (uint32_t j = 0; j < 10000000; ++j) {
         double number = distribution(generator);
-        if ( number<0 ) number=0;
-        uint64_t unumber = ::llrint( number );
+        if (number < 0) number = 0;
+        uint64_t unumber = ::llrint(number);
         uint64_t t0 = now();
-        if ( t0>0 ) {
-            ms.add(  unumber );
+        if (t0 > 0) {
+            ms.add(unumber);
             uint64_t t1 = now();
-            if ( t1>t0 ) tms.add( t1-t0 );
+            if (t1 > t0) tms.add(t1 - t0);
         }
     }
-    summary( ms );
+    summary("Normal Distribution (u=50,000, s=2,500)", ms);
     ms.clear();
 
     std::cout << "Cost of MicroStats (measure+bin)" << '\n';
-    summary( tms );
+    summary("Microstats Cost", tms);
     tms.clear();
 
-
-    for ( uint32_t j=0; j<10000000; ++j ) {
+    for (uint32_t j = 0; j < 10000000; ++j) {
         uint64_t t0 = now();
-        if ( t0>0 ) {
-            //asm __volatile__( "nop" );
+        if (t0 > 0) {
+            // asm __volatile__( "nop" );
             uint64_t t1 = now();
-            if ( t1>t0 ) tms.add( t1-t0 );
+            if (t1 > t0) tms.add(t1 - t0);
         }
     }
     std::cout << "Cost of measuring only" << '\n';
-    summary( tms );
+    summary("Measuring Cost Only", tms);
 }

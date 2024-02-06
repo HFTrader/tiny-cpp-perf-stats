@@ -32,6 +32,12 @@ inline uint32_t msb(uint64_t value) {
 template <uint32_t NDB>
 class MicroStats {
 public:
+    //! The number of available bins possible in a 64-bit range
+    static constexpr uint32_t NUMBINS = (64 - NDB) << NDB;
+
+    //! Mask used extensively in the calculations
+    static constexpr uint64_t MASK = (1ULL << NDB) - 1;
+
     //! Default constructor initializes the structures with proper ranges
     MicroStats() {
         init();
@@ -95,24 +101,6 @@ public:
         return out;
     }
 
-private:
-    //! Initializes the histogram with the calculated ranges
-    void init() {
-        for (uint32_t j = 0; j < bins.size(); ++j) {
-            Bin& bin(bins[j]);
-            bin.clear();
-            bin.range = calcrange(j);
-        }
-        totalcount = 0;
-        totalsum = 0;
-    }
-
-    //! The number of available bins possible in a 64-bit range
-    static constexpr uint32_t NUMBINS = (64 - NDB) << NDB;
-
-    //! Mask used extensively in the calculations
-    static constexpr uint64_t MASK = (1ULL << NDB) - 1;
-
     //! Computes the respective bin given a value
     static uint32_t calcbin(uint64_t value) {
         if (value < (1 << NDB)) return value;
@@ -134,6 +122,18 @@ private:
         uint64_t base = 1ULL << (numbits - 1);
         uint64_t offset = partition << (numbits - (NDB + 1));
         return Range{base + offset, base + (base >> NDB) + offset - 1};
+    }
+
+private:
+    //! Initializes the histogram with the calculated ranges
+    void init() {
+        for (uint32_t j = 0; j < bins.size(); ++j) {
+            Bin& bin(bins[j]);
+            bin.clear();
+            bin.range = calcrange(j);
+        }
+        totalcount = 0;
+        totalsum = 0;
     }
 
     //! Store the bin's statistics
