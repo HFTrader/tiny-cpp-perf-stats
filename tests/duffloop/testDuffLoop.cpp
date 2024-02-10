@@ -2,7 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
-#include "TimingHelpers.h"
+#include "TimingUtils.h"
 #include "Histogram.h"
 
 // Defined in DuffLoopHelpers.cpp

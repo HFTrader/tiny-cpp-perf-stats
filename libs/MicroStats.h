@@ -124,6 +124,16 @@ public:
         return Range{base + offset, base + (base >> NDB) + offset - 1};
     }
 
+    //! Returns the number of events
+    uint64_t count() const {
+        return totalcount;
+    }
+
+    //! Returns the global average
+    double average() const {
+        return totalsum / totalcount;
+    }
+
 private:
     //! Initializes the histogram with the calculated ranges
     void init() {

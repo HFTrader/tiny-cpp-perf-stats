@@ -1,13 +1,33 @@
 #pragma once
 
 #include <cstdint>
+#include <type_traits>
+#include <limits>
+#include <ctime>
+
+//! Returns the number of nanoseconds in UTC
+int64_t utcnow() {
+    struct timespec ts;
+    int res = ::clock_gettime(CLOCK_REALTIME, &ts);
+    if (res == 0) {
+        return int64_t(ts.tv_sec) * 1000000000L + int64_t(ts.tv_nsec);
+    }
+    return 0;
+}
 
 #if defined(__GNUC__) && defined(__x86_64__)
 
 #include <x86intrin.h>
 
 std::uint64_t tic() {
-    return __rdtsc();
+    return __builtin_ia32_rdtsc();
+}
+
+template <typename IntType,
+          typename RangeType = typename std::make_unsigned<IntType>::type>
+static inline RangeType forward_difference(const IntType& a, const IntType& b) {
+    if (a >= b) return a - b;
+    return (std::numeric_limits<IntType>::max() - a) + b;
 }
 
 static inline void mfence() {

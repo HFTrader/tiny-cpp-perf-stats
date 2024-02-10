@@ -1,5 +1,5 @@
 
-#include "TimingHelpers.h"
+#include "TimingUtils.h"
 #include "Histogram.h"
 #include <x86intrin.h>
 
