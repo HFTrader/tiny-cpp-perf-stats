@@ -3,6 +3,20 @@
 #include <pthread.h>
 #include <sys/sysinfo.h>
 #include <vector>
+#include <set>
+
+bool lockAllMemory();
+
+template <typename Container>
+std::set<typename Container::value_type> makeSet(const Container& container) {
+    std::set<typename Container::value_type> cset;
+    for (const auto& value : container) {
+        cset.insert(value);
+    }
+    return cset;
+}
+
+bool isIsolated(int core);
 
 std::vector<std::size_t> getThreadAffinity();
 

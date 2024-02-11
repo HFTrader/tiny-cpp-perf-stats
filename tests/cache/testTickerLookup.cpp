@@ -16,7 +16,7 @@
 #include "StringUtils.h"
 #include "Datasets.h"
 #include "Ticker.h"
-#include "DateUtils.h"
+#include "TimingUtils.h"
 #include "Regression.h"
 
 #include <boost/random/mersenne_twister.hpp>
@@ -62,7 +62,7 @@ void testme(const std::string& key, Snapshot& snap,
     }
 
     // Loop measuring lookups
-    double start = now();
+    double start = nowts();
     snap.start();
     uint64_t counter = 0;
     do {
@@ -71,7 +71,7 @@ void testme(const std::string& key, Snapshot& snap,
             book.count += 1;
             counter++;
         }
-    } while (now() < start + runsecs);
+    } while (nowts() < start + runsecs);
     snap.stop(key.c_str(), numtickers, counter);
 
     // The sum of all counters has to match

@@ -4,14 +4,14 @@
 
 #if defined(__GNUC__) && defined(__x86_64__)
 #include <x86intrin.h>
-uint64_t now() {
+uint64_t nowts() {
     return __rdtsc();
 }
 #else
 #include <chrono>
-uint64_t now() {
+uint64_t nowts() {
     using std::chrono;
-    return duration_cast<nanoseconds>(system_clock::now().time_since_epoch()).count();
+    return duration_cast<nanoseconds>(system_clock::nowts().time_since_epoch()).count();
 }
 #endif
 
@@ -75,10 +75,10 @@ int main(int argc, char* argv[]) {
         double number = distribution(generator);
         if (number < 0) number = 0;
         uint64_t unumber = ::llrint(number);
-        uint64_t t0 = now();
+        uint64_t t0 = nowts();
         if (t0 > 0) {
             ms.add(unumber);
-            uint64_t t1 = now();
+            uint64_t t1 = nowts();
             if (t1 > t0) tms.add(t1 - t0);
         }
     }
@@ -90,10 +90,10 @@ int main(int argc, char* argv[]) {
     tms.clear();
 
     for (uint32_t j = 0; j < 10000000; ++j) {
-        uint64_t t0 = now();
+        uint64_t t0 = nowts();
         if (t0 > 0) {
             // asm __volatile__( "nop" );
-            uint64_t t1 = now();
+            uint64_t t1 = nowts();
             if (t1 > t0) tms.add(t1 - t0);
         }
     }

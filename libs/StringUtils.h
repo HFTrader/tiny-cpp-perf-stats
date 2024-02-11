@@ -5,6 +5,10 @@
 #include <algorithm>
 #include <cstring>
 
+static inline const char* yn(bool flag) {
+    return flag ? "Y" : "N";
+}
+
 template <size_t N>
 struct TinyString {
     char buffer[N];

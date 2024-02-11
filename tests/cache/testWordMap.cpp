@@ -11,10 +11,10 @@
 #include "Datasets.h"
 #include "StringUtils.h"
 #include "Snapshot.h"
-#include "DateUtils.h"
 #include "Allocators.h"
 #include "Counter.h"
 #include "Regression.h"
+#include "TimingUtils.h"
 
 // The actual test run, templated by map type
 template <template <typename Key, typename Value, typename AllocType> class MapType,
@@ -25,13 +25,13 @@ void testme(const std::string& testname, Snapshot& snap,
     using KeyValuePair = std::pair<std::string_view, Counter<int>>;
     MapType<std::string_view, Counter<int>, AllocatorType<KeyValuePair>> words;
 
-    double start = now();
+    double start = nowts();
     snap.start();
     uint64_t counter = 0;
     do {
         for (std::string_view w : allwords) words[w]++;
         counter++;
-    } while (now() < start + runsecs);
+    } while (nowts() < start + runsecs);
     snap.stop(testname.c_str(), numwords, counter * allwords.size());
 
 #ifdef DEBUG

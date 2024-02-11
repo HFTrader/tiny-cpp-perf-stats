@@ -1,5 +1,19 @@
 #include "CpuUtils.h"
 #include <cstdio>
+#include <sys/mman.h>
+
+static auto affinity = makeSet(getThreadAffinity());
+bool isIsolated(int core) {
+    return affinity.find(core) == affinity.end();
+}
+
+bool lockAllMemory() {
+    if (mlockall(MCL_CURRENT | MCL_FUTURE) != 0) {
+        printf("Failed to lock memory. Please increase RLIMIT_MEMLOCK\n");
+        return false;
+    }
+    return true;
+}
 
 std::vector<std::size_t> getThreadAffinity() {
     std::vector<std::size_t> cores;

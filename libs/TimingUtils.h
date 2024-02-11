@@ -5,8 +5,18 @@
 #include <limits>
 #include <ctime>
 
+// Returns a timestamp in nanoseconds, monotonic
+static inline int64_t nowts() {
+    timespec ts;
+    int res = clock_gettime(CLOCK_MONOTONIC, &ts);
+    if (res == 0) {
+        return int64_t(ts.tv_sec) * 1000000000L + int64_t(ts.tv_nsec);
+    }
+    return 0;
+}
+
 //! Returns the number of nanoseconds in UTC
-int64_t utcnow() {
+static inline int64_t utcnow() {
     struct timespec ts;
     int res = ::clock_gettime(CLOCK_REALTIME, &ts);
     if (res == 0) {
@@ -18,10 +28,6 @@ int64_t utcnow() {
 #if defined(__GNUC__) && defined(__x86_64__)
 
 #include <x86intrin.h>
-
-std::uint64_t tic() {
-    return __builtin_ia32_rdtsc();
-}
 
 template <typename IntType,
           typename RangeType = typename std::make_unsigned<IntType>::type>
@@ -36,6 +42,10 @@ static inline void mfence() {
 
 static inline void disable_reorder() {
     asm volatile("" ::: "memory");
+}
+
+static inline std::uint64_t tic() {
+    return __builtin_ia32_rdtsc();
 }
 
 #else
@@ -90,4 +100,15 @@ double timeit(HistT& hist, Fn&& fn) {
     double elapsed = double(t1) - double(t0);
     hist.add(elapsed / count);
     return elapsed;
+}
+
+template <typename Fn>
+void busyWait(uint64_t ticks, Fn fn) {
+    uint64_t start = tic();
+    uint64_t finish = start + ticks;
+    uint64_t now;
+    while ((now = tic()) < finish) {
+        mfence();
+        fn(now);
+    }
 }

@@ -83,6 +83,8 @@
         "forward_list": "cpp",
         "__verbose_abort": "cpp",
         "unordered_set": "cpp",
-        "valarray": "cpp"
+        "valarray": "cpp",
+        "semaphore": "cpp",
+        "*.tmpl": "cpp"
     }
 }
