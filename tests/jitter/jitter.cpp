@@ -4,6 +4,7 @@
 #include <iostream>
 #include <set>
 #include <cstring>
+#include <unistd.h>
 
 #include "CpuUtils.h"
 #include "MicroStats.h"
@@ -13,13 +14,17 @@
 using Histogram = MicroStats<8>;
 const uint64_t ROUGHLY_ONE_SECOND_IN_TICKS = 3000000000;
 
-struct Options {
-    std::size_t wait_ticks = ROUGHLY_ONE_SECOND_IN_TICKS;
+struct Stats {
+    std::size_t wait_ticks = 3 * ROUGHLY_ONE_SECOND_IN_TICKS;
     std::size_t core;
     int policy;
     int prio;
+    pthread_t tid;
     bool print;
+    bool async;
     Histogram hist;
+    uint64_t pause;
+    uint64_t events;
 };
 
 double calcFrequencyGHz(uint64_t ticks) {
@@ -55,7 +60,7 @@ uint64_t calcQuantum(uint64_t ticks) {
 uint64_t quantum = calcQuantum(ROUGHLY_ONE_SECOND_IN_TICKS);
 double freqGHz = calcFrequencyGHz(ROUGHLY_ONE_SECOND_IN_TICKS);
 
-void collectJitterSamples(Options& opt) {
+void collectJitterSamples(Stats& opt) {
     uint64_t threshold = 10 * quantum;
     uint64_t last = tic();
     busyWait(opt.wait_ticks, [&last, &opt, threshold](uint64_t now) {
@@ -66,21 +71,23 @@ void collectJitterSamples(Options& opt) {
     if (opt.print) {
         unsigned cpu = sched_getcpu();
         printf(
-            "Testing core %-2ld cpu:%-2d Isol:%-2s Events:%-4ld "
+            "Testing core %-2ld cpu:%-2d Isol:%-2s Events:%-6ld "
             "Pct1/50/99: %-7ld %-7ld %-7ld\n",
             opt.core, cpu, yn(isIsolated(opt.core)), opt.hist.count(),
             long(opt.hist.percentile(1)), long(opt.hist.percentile(50)),
-            long(opt.hist.percentile(99)));
+            long(opt.hist.percentile(99.9)));
     }
+    opt.pause = opt.hist.percentile(99.9);
+    opt.events = opt.hist.count();
 }
 
 static void* runtest(void* args) {
-    Options& opt = *((Options*)args);
+    Stats& opt = *((Stats*)args);
     collectJitterSamples(opt);
     return nullptr;
 }
 
-void runJitterTestInCore(Options& opt) {
+void runJitterTestInCore(Stats& opt) {
     // Sets affinity to given core, and scheduling policy + priority.
     pthread_attr_t attr;
     pthread_attr_init(&attr);
@@ -108,15 +115,84 @@ void runJitterTestInCore(Options& opt) {
     }
 
     // Launches thread
-    pthread_t tid;
-    res = pthread_create(&tid, &attr, runtest, &opt);
+    res = pthread_create(&opt.tid, &attr, runtest, &opt);
     if (res != 0) {
         perror("pthread_create");
     }
 
-    // Waits for it to finish
-    void* result;
-    pthread_join(tid, &result);
+    if (opt.async) {
+        // This is just so the results are printed in order
+        usleep(10000);
+    } else {
+        // Wait for thread to finish
+        void* retval;
+        pthread_join(opt.tid, &retval);
+    }
+}
+
+void runAllTests(bool async) {
+    auto numcores = getNumberOfCores();
+    auto wait_ticks = (async ? 10 : 1) * ROUGHLY_ONE_SECOND_IN_TICKS;
+
+    std::vector<Stats> stats(numcores);
+    for (int core = 0; core < numcores; ++core) {
+        Stats& opt(stats[core]);
+        opt.core = core;
+        opt.wait_ticks = wait_ticks;
+        opt.policy = SCHED_FIFO;
+        opt.prio = sched_get_priority_max(SCHED_FIFO);
+        opt.print = true;
+        opt.async = async;
+        runJitterTestInCore(opt);
+    }
+
+    // Wait for all threads to stop and collect stats
+    uint64_t min_events = std::numeric_limits<uint64_t>::max();
+    uint64_t min_pause = std::numeric_limits<uint64_t>::max();
+    std::vector<uint64_t> isol_pause;
+    for (Stats& s : stats) {
+        if (async) {
+            void* retval;
+            pthread_join(s.tid, &retval);
+        }
+        min_events = std::min(min_events, s.events);
+        min_pause = std::min(min_pause, s.pause);
+        if (isIsolated(s.core)) {
+            isol_pause.push_back(s.pause);
+        }
+    }
+
+    // Take stats from isolated cores if they exist
+    if (!isol_pause.empty()) {
+        int num_isol = isol_pause.size();
+        std::sort(isol_pause.begin(), isol_pause.end());
+        min_pause = isol_pause[num_isol / 2];
+    }
+    printf("\n>>> MinEvents:%ld MinPause:%ld ticks \n\n", min_events, min_pause);
+
+    int min_sd_prio = sched_get_priority_min(SCHED_OTHER);
+    for (int core = 0; core < numcores; ++core) {
+        Stats& opt(stats[core]);
+        opt.core = core;
+        opt.wait_ticks = wait_ticks;
+        opt.policy = SCHED_OTHER;
+        opt.prio = min_sd_prio;
+        opt.print = false;
+        opt.async = async;
+        runJitterTestInCore(opt);
+    }
+
+    for (Stats& s : stats) {
+        if (async) {
+            void* retval;
+            pthread_join(s.tid, &retval);
+        }
+        double wait_secs = s.wait_ticks / (freqGHz * 1E9);
+        double excess_events = (double(s.hist.count()) - min_events) / wait_secs;
+        double jitter = (double(s.hist.percentile(99.9)) - min_pause) / (freqGHz * 1E3);
+        printf("Core:%-2ld  ExcessEvents: %6.0f/sec  Jitter: %6.1fus\n", s.core,
+               excess_events, jitter);
+    }
 }
 
 int main() {
@@ -138,56 +214,8 @@ int main() {
             "*** There are no isolated cores to get reliable stats on. Results may be "
             "misleading.\n");
     }
-
-    struct Stats {
-        uint64_t events;
-        uint64_t pause;
-    };
-    std::vector<Stats> stats(numcores);
-    int max_rr_prio = sched_get_priority_max(SCHED_FIFO);
-    std::vector<uint64_t> isol_pause;
-    for (int core = 0; core < numcores; ++core) {
-        Options opt;
-        opt.core = core;
-        opt.policy = SCHED_FIFO;
-        opt.prio = max_rr_prio;
-        opt.print = true;
-        runJitterTestInCore(opt);
-        uint64_t pause = opt.hist.percentile(99.9);
-        stats[core].events = opt.hist.count();
-        stats[core].pause = pause;
-        if (isIsolated(core)) {
-            isol_pause.push_back(pause);
-        }
-    }
-
-    uint64_t min_events = std::numeric_limits<uint64_t>::max();
-    uint64_t min_pause = std::numeric_limits<uint64_t>::max();
-    for (Stats& s : stats) {
-        min_events = std::min(min_events, s.events);
-        min_pause = std::min(min_pause, s.pause);
-    }
-    // Take stats from isolated cores if they exist
-    if (!isol_pause.empty()) {
-        int num_isol = isol_pause.size();
-        std::sort(isol_pause.begin(), isol_pause.end());
-        min_pause = isol_pause[num_isol / 2];
-    }
-    printf("\n============== Calculated Statistics ================\n");
-    printf("MinEvents:%ld MinPause:%ld ticks \n", min_events, min_pause);
-
-    int min_sd_prio = sched_get_priority_min(SCHED_OTHER);
-    double wait_secs = ROUGHLY_ONE_SECOND_IN_TICKS / (freqGHz * 1E9);
-    for (int core = 0; core < numcores; ++core) {
-        Options opt;
-        opt.core = core;
-        opt.policy = SCHED_OTHER;
-        opt.prio = min_sd_prio;
-        opt.print = false;
-        runJitterTestInCore(opt);
-        double excess_events = (double(opt.hist.count()) - min_events) / wait_secs;
-        double jitter = (double(opt.hist.percentile(99.9)) - min_pause) / (freqGHz * 1E3);
-        printf("Core:%-2d  ExcessEvents: %6.0f/sec  Jitter: %6.1fus\n", core,
-               excess_events, jitter);
-    }
+    printf("\n\n*********** Running asynchronous tests \n\n");
+    runAllTests(true);
+    printf("\n\n*********** Running synchronous tests (better) \n\n");
+    runAllTests(false);
 }
