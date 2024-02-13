@@ -1,30 +1,29 @@
 
-#include <vector>
-#include <cstdint>
-#include <iostream>
-#include <set>
-#include <cstring>
-#include <unistd.h>
-
 #include "CpuUtils.h"
 #include "MicroStats.h"
-#include "TimingUtils.h"
 #include "StringUtils.h"
+#include "TimingUtils.h"
+#include <cstdint>
+#include <cstring>
+#include <iostream>
+#include <set>
+#include <unistd.h>
+#include <vector>
 
 using Histogram = MicroStats<8>;
 const uint64_t ROUGHLY_ONE_SECOND_IN_TICKS = 3000000000;
 
 struct Stats {
-    std::size_t wait_ticks = 3 * ROUGHLY_ONE_SECOND_IN_TICKS;
-    std::size_t core;
-    int policy;
-    int prio;
-    pthread_t tid;
-    bool print;
-    bool async;
-    Histogram hist;
-    uint64_t pause;
-    uint64_t events;
+    std::size_t wait_ticks;  // number of ticks to run test
+    std::size_t core;        // core number the thread is assigned
+    int policy;              // Thread policy (RR,FIFO,OTHER)
+    int prio;                // Thread priority
+    pthread_t tid;           // The thread id
+    bool print;              // Print stats as it's collected?
+    bool async;              // Collect asynchronously or ordered?
+    Histogram hist;          // MicroStats histogram
+    uint64_t pause;          // 99.9 percentile pauses
+    uint64_t events;         // number of anomalies
 };
 
 double calcFrequencyGHz(uint64_t ticks) {
@@ -40,7 +39,7 @@ uint64_t calcQuantum(uint64_t ticks) {
     uint64_t quantum = std::numeric_limits<uint64_t>::max();
     uint64_t last = 0;
     auto update = [&last, &quantum, &cpu](uint64_t now) {
-        uint64_t diff = now - last;  // forward_difference(now, last);
+        uint64_t diff = forward_difference(now, last);
         if (diff < quantum) {
             quantum = diff;
         }
@@ -60,7 +59,7 @@ uint64_t calcQuantum(uint64_t ticks) {
 uint64_t quantum = calcQuantum(ROUGHLY_ONE_SECOND_IN_TICKS);
 double freqGHz = calcFrequencyGHz(ROUGHLY_ONE_SECOND_IN_TICKS);
 
-void collectJitterSamples(Stats& opt) {
+void collectJitterSamples(Stats &opt) {
     uint64_t threshold = 10 * quantum;
     uint64_t last = tic();
     busyWait(opt.wait_ticks, [&last, &opt, threshold](uint64_t now) {
@@ -81,13 +80,13 @@ void collectJitterSamples(Stats& opt) {
     opt.events = opt.hist.count();
 }
 
-static void* runtest(void* args) {
-    Stats& opt = *((Stats*)args);
+static void *runtest(void *args) {
+    Stats &opt = *((Stats *)args);
     collectJitterSamples(opt);
     return nullptr;
 }
 
-void runJitterTestInCore(Stats& opt) {
+void runJitterTestInCore(Stats &opt) {
     // Sets affinity to given core, and scheduling policy + priority.
     pthread_attr_t attr;
     pthread_attr_init(&attr);
@@ -125,7 +124,7 @@ void runJitterTestInCore(Stats& opt) {
         usleep(10000);
     } else {
         // Wait for thread to finish
-        void* retval;
+        void *retval;
         pthread_join(opt.tid, &retval);
     }
 }
@@ -136,7 +135,7 @@ void runAllTests(bool async) {
 
     std::vector<Stats> stats(numcores);
     for (int core = 0; core < numcores; ++core) {
-        Stats& opt(stats[core]);
+        Stats &opt(stats[core]);
         opt.core = core;
         opt.wait_ticks = wait_ticks;
         opt.policy = SCHED_FIFO;
@@ -150,9 +149,9 @@ void runAllTests(bool async) {
     uint64_t min_events = std::numeric_limits<uint64_t>::max();
     uint64_t min_pause = std::numeric_limits<uint64_t>::max();
     std::vector<uint64_t> isol_pause;
-    for (Stats& s : stats) {
+    for (Stats &s : stats) {
         if (async) {
-            void* retval;
+            void *retval;
             pthread_join(s.tid, &retval);
         }
         min_events = std::min(min_events, s.events);
@@ -172,7 +171,7 @@ void runAllTests(bool async) {
 
     int min_sd_prio = sched_get_priority_min(SCHED_OTHER);
     for (int core = 0; core < numcores; ++core) {
-        Stats& opt(stats[core]);
+        Stats &opt(stats[core]);
         opt.core = core;
         opt.wait_ticks = wait_ticks;
         opt.policy = SCHED_OTHER;
@@ -182,9 +181,9 @@ void runAllTests(bool async) {
         runJitterTestInCore(opt);
     }
 
-    for (Stats& s : stats) {
+    for (Stats &s : stats) {
         if (async) {
-            void* retval;
+            void *retval;
             pthread_join(s.tid, &retval);
         }
         double wait_secs = s.wait_ticks / (freqGHz * 1E9);
@@ -209,9 +208,11 @@ int main() {
         printf("%ld ", core);
     }
     printf("\n");
+
     if (numcores == affinity.size()) {
         printf(
-            "*** There are no isolated cores to get reliable stats on. Results may be "
+            "*** There are no isolated cores to get reliable stats on. Results "
+            "may be "
             "misleading.\n");
     }
     printf("\n\n*********** Running asynchronous tests \n\n");
