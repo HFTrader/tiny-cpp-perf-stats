@@ -8,6 +8,7 @@ if ( NOT CMAKE_BUILD_TYPE )
   set( CMAKE_BUILD_TYPE "Release" CACHE STRING "Build type: release, debug, relwithdebinfo" )
 endif()
 set( TINYPERF_BUILD_TESTS OFF CACHE BOOL "Builds tests" )
+set( TINYPERF_ENABLE_LIBPFM ON CACHE BOOL "Enable libpfm" )
 
 ###########################################################################
 # Project start
@@ -19,11 +20,20 @@ set( CMAKE_CXX_STANDARD 17 )
 ###########################################################################
 # Dependencies
 ###########################################################################
-
+list( APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake )
 include( FindPkgConfig )
 find_package( Boost COMPONENTS container )
 if ( Boost_CONTAINER_FOUND ) 
   add_definitions( -DBOOST_CONTAINER_FOUND )
+endif()
+
+if ( TINYPERF_ENABLE_LIBPFM )
+find_package( Libpfm ) 
+if ( HAVE_LIBPFM ) 
+  add_definitions(-DLIBPFM_FOUND)
+else()
+  message( "LIBPFM not found. Only basic events will be available.")
+endif()
 endif()
 
 find_package( Armadillo )

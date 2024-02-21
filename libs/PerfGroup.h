@@ -2,6 +2,7 @@
 #include <vector>
 #include <string>
 #include <unordered_map>
+#include "PerfUtils.h"
 
 // https://stackoverflow.com/questions/42088515/perf-event-open-how-to-monitoring-multiple-events
 

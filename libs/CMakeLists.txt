@@ -1,5 +1,7 @@
-set( LIBRARY_CPP_FILES Snapshot.cpp PerfGroup.cpp CpuUtils.cpp ) 
+set( LIBRARY_CPP_FILES Snapshot.cpp PerfGroup.cpp PerfUtils.cpp CpuUtils.cpp ) 
+if ( HAVE_LIBPFM )
 set( LIBRARY_DEPENDENCIES pfm )
+endif()
 if ( Armadillo_FOUND ) 
   list( APPEND LIBRARY_CPP_FILES Regression.cpp )
   list( APPEND LIBRARY_DEPENDENCIES  armadillo )
