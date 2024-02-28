@@ -4,6 +4,7 @@
 #include <cstring>
 #include <algorithm>
 #include <unordered_map>
+#include <limits>
 
 // https://sources.debian.org/src/libpfm4/4.11.1+git32-gd0b85fb-1/perf_examples/self_count.c/
 // https://stackoverflow.com/questions/42088515/perf-event-open-how-to-monitoring-multiple-events
