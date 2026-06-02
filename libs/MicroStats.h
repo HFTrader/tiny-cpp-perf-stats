@@ -32,8 +32,12 @@ inline uint32_t msb(uint64_t value) {
 template <uint32_t NDB>
 class MicroStats {
 public:
-    //! The number of available bins possible in a 64-bit range
-    static constexpr uint32_t NUMBINS = (64 - NDB) << NDB;
+    //! The number of available bins possible in a 64-bit range.
+    //! A value with bit 63 set has msb()==64 and lands in octave (64-NDB),
+    //! so the highest bin index is ((64-NDB)<<NDB)+MASK. Sizing the array at
+    //! (64-NDB)<<NDB is one octave short and overflows on those samples;
+    //! (65-NDB)<<NDB gives the top octave its own slots.
+    static constexpr uint32_t NUMBINS = (65 - NDB) << NDB;
 
     //! Mask used extensively in the calculations
     static constexpr uint64_t MASK = (1ULL << NDB) - 1;
@@ -117,7 +121,10 @@ public:
     //! Computes the range of a bin given its ID
     static Range calcrange(uint32_t bin) {
         if (bin < (1 << NDB)) return Range{bin, bin};
-        uint32_t partition = bin & MASK;
+        // partition is shifted left by up to (numbits - NDB - 1), which exceeds
+        // 31 for high octaves; a uint32_t shift overflows there and corrupts the
+        // range. Hold it in 64 bits so the shift stays valid across the range.
+        uint64_t partition = bin & MASK;
         uint32_t numbits = (bin >> NDB) + NDB;
         uint64_t base = 1ULL << (numbits - 1);
         uint64_t offset = partition << (numbits - (NDB + 1));

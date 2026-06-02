@@ -60,6 +60,7 @@ include_directories( libs )
 set( TARGETS  tinyperfstats )
 
 if ( TINYPERF_BUILD_TESTS AND Armadillo_FOUND )
+  enable_testing()
   add_subdirectory( datasets )
   add_subdirectory( tests )
 endif()
